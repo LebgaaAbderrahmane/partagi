@@ -34,11 +34,7 @@ export default function ShareButton({
 
     try {
       const result = await requestScreenShare(roomCode, participantId);
-
-      if (result.needs_approval) {
-        return;
-      }
-
+      if (result.needs_approval) return;
       await localParticipant.setScreenShareEnabled(true);
       onShareStarted();
     } catch (e) {
@@ -50,13 +46,9 @@ export default function ShareButton({
     <button
       onClick={handleShare}
       disabled={!localParticipant}
-      style={{
-        padding: "0.5rem 1rem",
-        background: isSharing ? "#ef4444" : undefined,
-        color: isSharing ? "white" : undefined,
-      }}
+      className={isSharing ? "danger" : "primary"}
     >
-      {isSharing ? "Stop Sharing" : "Share Screen"}
+      {isSharing ? "Stop Share" : "Share Screen"}
     </button>
   );
 }

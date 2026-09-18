@@ -16,8 +16,8 @@ export default function MicToggle({ localParticipant }: MicToggleProps) {
   };
 
   return (
-    <button onClick={toggle} style={{ padding: "0.5rem 1rem" }}>
-      {muted ? "Unmute Mic" : "Mute Mic"}
+    <button onClick={toggle} disabled={!localParticipant}>
+      {muted ? "Unmute" : "Mute"}
     </button>
   );
 }
