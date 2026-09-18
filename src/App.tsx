@@ -38,6 +38,7 @@ export default function App() {
   const [view, setView] = useState<View>(initial.view);
   const [session, setSession] = useState<SessionState | null>(initial.session);
   const [error, setError] = useState<string | null>(null);
+  const [sessionOpened, setSessionOpened] = useState(false);
 
   const handleCreate = async (code: string) => {
     const participantId = crypto.randomUUID().slice(0, 12);
@@ -47,13 +48,13 @@ export default function App() {
         const { open } = await import("@tauri-apps/plugin-shell");
         const url = `${res.session_url}&pid=${participantId}`;
         await open(url);
+        setSessionOpened(true);
         setSession({
           code: res.code,
           participantId,
           token: res.token,
           serverUrl: res.server_url,
         });
-        setView("session");
       } else {
         setSession({
           code: res.code,
@@ -76,13 +77,13 @@ export default function App() {
         const { open } = await import("@tauri-apps/plugin-shell");
         const url = `${res.session_url}&pid=${participantId}`;
         await open(url);
+        setSessionOpened(true);
         setSession({
           code: res.code,
           participantId,
           token: res.token,
           serverUrl: res.server_url,
         });
-        setView("session");
       } else {
         setSession({
           code: res.code,
@@ -123,6 +124,44 @@ export default function App() {
       )}
       {view === "home" && (
         <Home onCreateSession={handleCreate} onJoinSession={handleJoin} />
+      )}
+      {view === "home" && sessionOpened && session && (
+        <div style={{
+          position: "fixed",
+          bottom: 24,
+          left: "50%",
+          transform: "translateX(-50%)",
+          background: "var(--success)",
+          color: "white",
+          padding: "0.75rem 1.25rem",
+          borderRadius: "var(--radius)",
+          fontSize: "0.85rem",
+          display: "flex",
+          alignItems: "center",
+          gap: "0.75rem",
+          boxShadow: "0 4px 12px rgba(0,0,0,0.3)",
+        }}>
+          <span>Session opened in your browser</span>
+          <code style={{ background: "rgba(255,255,255,0.2)", padding: "0.15rem 0.4rem", borderRadius: 4 }}>
+            {session.code}
+          </code>
+          <button
+            onClick={() => {
+              navigator.clipboard.writeText(session.code);
+            }}
+            style={{
+              background: "rgba(255,255,255,0.2)",
+              border: "none",
+              color: "white",
+              padding: "0.25rem 0.5rem",
+              borderRadius: 4,
+              cursor: "pointer",
+              fontSize: "0.8rem",
+            }}
+          >
+            Copy Code
+          </button>
+        </div>
       )}
       {view === "session" && session && (
         <Session
