@@ -8,6 +8,8 @@ use uuid::Uuid;
 
 const LIVEKIT_API_KEY: &str = "devkey";
 const LIVEKIT_API_SECRET: &str = "secret";
+const LIVEKIT_SERVER_URL: &str = "ws://localhost:7880";
+const FRONTEND_URL: &str = "http://localhost:1420";
 
 struct AppState {
     sessions: Mutex<HashMap<String, Session>>,
@@ -32,6 +34,7 @@ struct JoinSessionResponse {
     code: String,
     token: String,
     server_url: String,
+    session_url: String,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -79,6 +82,13 @@ fn generate_token(room: &str, identity: &str) -> String {
     .expect("Failed to generate token")
 }
 
+fn build_session_url(code: &str, token: &str) -> String {
+    format!(
+        "{}/session?code={}&token={}&server={}",
+        FRONTEND_URL, code, token, LIVEKIT_SERVER_URL
+    )
+}
+
 #[tauri::command]
 fn create_session(state: State<AppState>, creator_id: String) -> CreateSessionResponse {
     let code = Uuid::new_v4().to_string()[..8].to_string();
@@ -109,11 +119,13 @@ fn join_session(
     }
 
     let token = generate_token(&session.code, &participant_id);
+    let session_url = build_session_url(&session.code, &token);
 
     Ok(JoinSessionResponse {
         code: session.code.clone(),
         token,
-        server_url: "ws://localhost:7880".to_string(),
+        server_url: LIVEKIT_SERVER_URL.to_string(),
+        session_url,
     })
 }
 

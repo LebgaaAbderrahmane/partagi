@@ -8,6 +8,7 @@ export interface JoinSessionResponse {
   code: string;
   token: string;
   server_url: string;
+  session_url: string;
 }
 
 export interface RequestShareResponse {
