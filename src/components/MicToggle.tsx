@@ -11,7 +11,17 @@ export default function MicToggle({ localParticipant }: MicToggleProps) {
   const toggle = async () => {
     if (!localParticipant) return;
     const enabled = !muted;
-    await localParticipant.setMicrophoneEnabled(enabled);
+
+    if (enabled) {
+      await localParticipant.setMicrophoneEnabled(true, {
+        noiseSuppression: true,
+        echoCancellation: true,
+        autoGainControl: true,
+      });
+    } else {
+      await localParticipant.setMicrophoneEnabled(false);
+    }
+
     setMuted(!enabled);
   };
 
