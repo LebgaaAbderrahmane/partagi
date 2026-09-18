@@ -8,6 +8,7 @@ type View = "home" | "session";
 interface SessionState {
   code: string;
   participantId: string;
+  streamUrl: string;
 }
 
 export default function App() {
@@ -15,13 +16,13 @@ export default function App() {
   const [session, setSession] = useState<SessionState | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const startSession = async (code: string) => {
-    const participantId = crypto.randomUUID().slice(0, 12);
+  const startSession = async (code: string, participantId: string) => {
     try {
       const res = await joinSession(code, participantId);
       setSession({
         code: res.code,
         participantId,
+        streamUrl: res.stream_url,
       });
       setView("session");
     } catch (e) {
@@ -54,12 +55,13 @@ export default function App() {
         </div>
       )}
       {view === "home" && (
-        <Home onCreateSession={startSession} onJoinSession={startSession} />
+        <Home onJoinSession={startSession} />
       )}
       {view === "session" && session && (
         <Session
           roomCode={session.code}
           participantId={session.participantId}
+          streamUrl={session.streamUrl}
           onLeave={() => {
             setSession(null);
             setView("home");

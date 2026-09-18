@@ -4,6 +4,7 @@ use chrono::Utc;
 use jsonwebtoken::{encode, EncodingKey, Header};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::net::UdpSocket;
 use tokio::net::TcpListener;
 use tokio::sync::Mutex;
 use tauri::State;
@@ -96,8 +97,22 @@ fn build_session_url(code: &str, token: &str) -> String {
     )
 }
 
+fn get_local_ip() -> String {
+    UdpSocket::bind("0.0.0.0:0")
+        .and_then(|s| {
+            s.connect(("8.8.8.8", 80))?;
+            Ok(s.local_addr()?.ip().to_string())
+        })
+        .unwrap_or_else(|_| "127.0.0.1".to_string())
+}
+
 fn build_stream_url(_code: &str) -> String {
-    format!("ws://localhost:{}", STREAM_PORT)
+    format!("ws://{}:{}", get_local_ip(), STREAM_PORT)
+}
+
+#[tauri::command]
+fn get_stream_url() -> String {
+    format!("ws://{}:{}", get_local_ip(), STREAM_PORT)
 }
 
 #[tauri::command]
@@ -296,7 +311,7 @@ fn stop_stream(state: State<AppState>) -> Result<(), String> {
 }
 
 async fn run_stream_server(broadcaster: stream::FrameBroadcaster) {
-    let listener = TcpListener::bind(("127.0.0.1", STREAM_PORT))
+    let listener = TcpListener::bind(("0.0.0.0", STREAM_PORT))
         .await
         .expect("Failed to bind stream server");
 
@@ -365,6 +380,7 @@ fn main() {
             takeover_share,
             start_stream,
             stop_stream,
+            get_stream_url,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -12,8 +12,7 @@ export interface CreateSessionResponse {
 
 export interface JoinSessionResponse {
   code: string;
-  token: string;
-  server_url: string;
+  stream_url: string;
   session_url: string;
 }
 
@@ -105,4 +104,9 @@ export async function startStream(): Promise<void> {
 export async function stopStream(): Promise<void> {
   assertTauri();
   return invoke("stop_stream");
+}
+
+export async function getStreamUrl(): Promise<string> {
+  assertTauri();
+  return invoke("get_stream_url");
 }

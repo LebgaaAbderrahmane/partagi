@@ -4,12 +4,14 @@ import { leaveSession, startStream, stopStream } from "../lib/tauri-commands";
 interface SessionProps {
   roomCode: string;
   participantId: string;
+  streamUrl: string;
   onLeave: () => void;
 }
 
 export default function Session({
   roomCode,
   participantId,
+  streamUrl,
   onLeave,
 }: SessionProps) {
   const [connected, setConnected] = useState(false);
@@ -21,7 +23,7 @@ export default function Session({
   const retryRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const connectWs = useCallback(() => {
-    const ws = new WebSocket("ws://127.0.0.1:9001");
+    const ws = new WebSocket(streamUrl);
     wsRef.current = ws;
 
     ws.onopen = () => {
@@ -57,7 +59,7 @@ export default function Session({
     ws.onerror = () => {
       ws.close();
     };
-  }, []);
+  }, [streamUrl]);
 
   useEffect(() => {
     connectWs();
