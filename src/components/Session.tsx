@@ -61,23 +61,43 @@ export default function Session({
   }, []);
 
   useEffect(() => {
+    console.log("[Session] Mounting", {
+      roomCode,
+      participantId,
+      serverUrl,
+      token: token.slice(0, 30) + "...",
+      url: window.location.href,
+    });
+    console.log("[Session] WebRTC check:", {
+      RTCPeerConnection: typeof RTCPeerConnection,
+      mediaDevices: typeof navigator.mediaDevices,
+      getUserMedia: typeof navigator.mediaDevices?.getUserMedia,
+      userAgent: navigator.userAgent,
+    });
+
     const r = new Room({
       adaptiveStream: true,
       dynacast: true,
     });
 
     r.on(RoomEvent.Connected, () => {
+      console.log("[Session] Connected");
       setConnected(true);
       updateParticipants(r);
     });
 
-    r.on(RoomEvent.ParticipantConnected, () => updateParticipants(r));
-    r.on(RoomEvent.ParticipantDisconnected, () => {
+    r.on(RoomEvent.ParticipantConnected, (p) => {
+      console.log("[Session] Participant joined:", p.identity);
+      updateParticipants(r);
+    });
+    r.on(RoomEvent.ParticipantDisconnected, (p) => {
+      console.log("[Session] Participant left:", p.identity);
       updateParticipants(r);
       findScreenTrack(r);
     });
 
     r.on(RoomEvent.TrackPublished, (pub, participant) => {
+      console.log("[Session] Track published:", pub.source, "by", participant.identity);
       if (pub.source === Track.Source.ScreenShare) {
         findScreenTrack(r);
         if (participant instanceof RemoteParticipant) {
@@ -87,15 +107,21 @@ export default function Session({
     });
 
     r.on(RoomEvent.TrackUnpublished, (pub) => {
+      console.log("[Session] Track unpublished:", pub.source);
       if (pub.source === Track.Source.ScreenShare) {
         findScreenTrack(r);
         setActiveSharer(null);
       }
     });
 
-    r.on(RoomEvent.Disconnected, () => setConnected(false));
+    r.on(RoomEvent.Disconnected, () => {
+      console.log("[Session] Disconnected");
+      setConnected(false);
+    });
 
+    console.log("[Session] Calling r.connect...");
     r.connect(serverUrl, token).catch((e: Error) => {
+      console.error("[Session] Connect failed:", e);
       setError(`Connection failed: ${e.message || e}`);
     });
 
@@ -103,7 +129,7 @@ export default function Session({
     return () => {
       void r.disconnect();
     };
-  }, [serverUrl, token, updateParticipants, findScreenTrack]);
+  }, [serverUrl, token, updateParticipants, findScreenTrack, roomCode, participantId]);
 
   useEffect(() => {
     if (!remoteScreenTrack?.track) return;

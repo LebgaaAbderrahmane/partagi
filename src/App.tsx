@@ -19,6 +19,8 @@ function getInitialView(): { view: View; session: SessionState | null } {
   const server = params.get("server");
   const participantId = params.get("pid") || crypto.randomUUID().slice(0, 12);
 
+  console.log("[App] getInitialView", { code, token, server, pid: participantId, fullUrl: window.location.href });
+
   if (code && token && server) {
     return {
       view: "session",
@@ -30,7 +32,9 @@ function getInitialView(): { view: View; session: SessionState | null } {
 }
 
 function isInTauri(): boolean {
-  return "__TAURI__" in window;
+  const result = "__TAURI__" in window;
+  console.log("[App] isInTauri:", result, "window keys:", Object.keys(window).filter(k => k.startsWith("__")));
+  return result;
 }
 
 export default function App() {
@@ -40,14 +44,21 @@ export default function App() {
   const [error, setError] = useState<string | null>(null);
   const [sessionOpened, setSessionOpened] = useState(false);
 
+  console.log("[App] render", { view, session: session ? { code: session.code } : null, sessionOpened });
+
   const handleCreate = async (code: string) => {
     const participantId = crypto.randomUUID().slice(0, 12);
+    console.log("[App] handleCreate", { code, participantId, inTauri: isInTauri() });
     try {
       const res = await joinSession(code, participantId);
+      console.log("[App] joinSession response", { code: res.code, token: res.token.slice(0, 20) + "...", server_url: res.server_url, session_url: res.session_url });
+
       if (isInTauri()) {
         const { open } = await import("@tauri-apps/plugin-shell");
         const url = `${res.session_url}&pid=${participantId}`;
+        console.log("[App] Opening browser:", url);
         await open(url);
+        console.log("[App] Browser opened successfully");
         setSessionOpened(true);
         setSession({
           code: res.code,
@@ -56,6 +67,7 @@ export default function App() {
           serverUrl: res.server_url,
         });
       } else {
+        console.log("[App] Not in Tauri, connecting directly");
         setSession({
           code: res.code,
           participantId,
@@ -65,18 +77,24 @@ export default function App() {
         setView("session");
       }
     } catch (e) {
+      console.error("[App] handleCreate error:", e);
       setError(String(e));
     }
   };
 
   const handleJoin = async (code: string) => {
     const participantId = crypto.randomUUID().slice(0, 12);
+    console.log("[App] handleJoin", { code, participantId, inTauri: isInTauri() });
     try {
       const res = await joinSession(code, participantId);
+      console.log("[App] joinSession response", { code: res.code, session_url: res.session_url });
+
       if (isInTauri()) {
         const { open } = await import("@tauri-apps/plugin-shell");
         const url = `${res.session_url}&pid=${participantId}`;
+        console.log("[App] Opening browser:", url);
         await open(url);
+        console.log("[App] Browser opened successfully");
         setSessionOpened(true);
         setSession({
           code: res.code,
@@ -85,6 +103,7 @@ export default function App() {
           serverUrl: res.server_url,
         });
       } else {
+        console.log("[App] Not in Tauri, connecting directly");
         setSession({
           code: res.code,
           participantId,
@@ -94,6 +113,7 @@ export default function App() {
         setView("session");
       }
     } catch (e) {
+      console.error("[App] handleJoin error:", e);
       setError(String(e));
     }
   };
