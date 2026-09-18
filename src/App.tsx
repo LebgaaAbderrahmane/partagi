@@ -8,112 +8,23 @@ type View = "home" | "session";
 interface SessionState {
   code: string;
   participantId: string;
-  token: string;
-  serverUrl: string;
-}
-
-function getInitialView(): { view: View; session: SessionState | null } {
-  const params = new URLSearchParams(window.location.search);
-  const code = params.get("code");
-  const token = params.get("token");
-  const server = params.get("server");
-  const participantId = params.get("pid") || crypto.randomUUID().slice(0, 12);
-
-  console.log("[App] getInitialView", { code, token, server, pid: participantId, fullUrl: window.location.href });
-
-  if (code && token && server) {
-    return {
-      view: "session",
-      session: { code, participantId, token, serverUrl: server },
-    };
-  }
-
-  return { view: "home", session: null };
-}
-
-function isInTauri(): boolean {
-  const result = "__TAURI__" in window;
-  console.log("[App] isInTauri:", result, "window keys:", Object.keys(window).filter(k => k.startsWith("__")));
-  return result;
 }
 
 export default function App() {
-  const initial = getInitialView();
-  const [view, setView] = useState<View>(initial.view);
-  const [session, setSession] = useState<SessionState | null>(initial.session);
+  const [view, setView] = useState<View>("home");
+  const [session, setSession] = useState<SessionState | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [sessionOpened, setSessionOpened] = useState(false);
 
-  console.log("[App] render", { view, session: session ? { code: session.code } : null, sessionOpened });
-
-  const handleCreate = async (code: string) => {
+  const startSession = async (code: string) => {
     const participantId = crypto.randomUUID().slice(0, 12);
-    console.log("[App] handleCreate", { code, participantId, inTauri: isInTauri() });
     try {
       const res = await joinSession(code, participantId);
-      console.log("[App] joinSession response", { code: res.code, token: res.token.slice(0, 20) + "...", server_url: res.server_url, session_url: res.session_url });
-
-      if (isInTauri()) {
-        const { open } = await import("@tauri-apps/plugin-shell");
-        const url = `${res.session_url}&pid=${participantId}`;
-        console.log("[App] Opening browser:", url);
-        await open(url);
-        console.log("[App] Browser opened successfully");
-        setSessionOpened(true);
-        setSession({
-          code: res.code,
-          participantId,
-          token: res.token,
-          serverUrl: res.server_url,
-        });
-      } else {
-        console.log("[App] Not in Tauri, connecting directly");
-        setSession({
-          code: res.code,
-          participantId,
-          token: res.token,
-          serverUrl: res.server_url,
-        });
-        setView("session");
-      }
+      setSession({
+        code: res.code,
+        participantId,
+      });
+      setView("session");
     } catch (e) {
-      console.error("[App] handleCreate error:", e);
-      setError(String(e));
-    }
-  };
-
-  const handleJoin = async (code: string) => {
-    const participantId = crypto.randomUUID().slice(0, 12);
-    console.log("[App] handleJoin", { code, participantId, inTauri: isInTauri() });
-    try {
-      const res = await joinSession(code, participantId);
-      console.log("[App] joinSession response", { code: res.code, session_url: res.session_url });
-
-      if (isInTauri()) {
-        const { open } = await import("@tauri-apps/plugin-shell");
-        const url = `${res.session_url}&pid=${participantId}`;
-        console.log("[App] Opening browser:", url);
-        await open(url);
-        console.log("[App] Browser opened successfully");
-        setSessionOpened(true);
-        setSession({
-          code: res.code,
-          participantId,
-          token: res.token,
-          serverUrl: res.server_url,
-        });
-      } else {
-        console.log("[App] Not in Tauri, connecting directly");
-        setSession({
-          code: res.code,
-          participantId,
-          token: res.token,
-          serverUrl: res.server_url,
-        });
-        setView("session");
-      }
-    } catch (e) {
-      console.error("[App] handleJoin error:", e);
       setError(String(e));
     }
   };
@@ -143,56 +54,15 @@ export default function App() {
         </div>
       )}
       {view === "home" && (
-        <Home onCreateSession={handleCreate} onJoinSession={handleJoin} />
-      )}
-      {view === "home" && sessionOpened && session && (
-        <div style={{
-          position: "fixed",
-          bottom: 24,
-          left: "50%",
-          transform: "translateX(-50%)",
-          background: "var(--success)",
-          color: "white",
-          padding: "0.75rem 1.25rem",
-          borderRadius: "var(--radius)",
-          fontSize: "0.85rem",
-          display: "flex",
-          alignItems: "center",
-          gap: "0.75rem",
-          boxShadow: "0 4px 12px rgba(0,0,0,0.3)",
-        }}>
-          <span>Session opened in your browser</span>
-          <code style={{ background: "rgba(255,255,255,0.2)", padding: "0.15rem 0.4rem", borderRadius: 4 }}>
-            {session.code}
-          </code>
-          <button
-            onClick={() => {
-              navigator.clipboard.writeText(session.code);
-            }}
-            style={{
-              background: "rgba(255,255,255,0.2)",
-              border: "none",
-              color: "white",
-              padding: "0.25rem 0.5rem",
-              borderRadius: 4,
-              cursor: "pointer",
-              fontSize: "0.8rem",
-            }}
-          >
-            Copy Code
-          </button>
-        </div>
+        <Home onCreateSession={startSession} onJoinSession={startSession} />
       )}
       {view === "session" && session && (
         <Session
           roomCode={session.code}
           participantId={session.participantId}
-          serverUrl={session.serverUrl}
-          token={session.token}
           onLeave={() => {
             setSession(null);
             setView("home");
-            window.history.replaceState({}, "", window.location.pathname);
           }}
         />
       )}

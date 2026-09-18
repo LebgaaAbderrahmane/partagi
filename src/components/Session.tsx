@@ -1,173 +1,92 @@
-import { useEffect, useState, useCallback, useRef } from "react";
-import {
-  Room,
-  RoomEvent,
-  RemoteParticipant,
-  RemoteTrackPublication,
-  Track,
-  LocalParticipant,
-} from "livekit-client";
-import { leaveSession } from "../lib/tauri-commands";
-import MicToggle from "./MicToggle";
-import ShareButton from "./ShareButton";
-import HandoffModal from "./HandoffModal";
+import { useEffect, useState, useRef, useCallback } from "react";
+import { leaveSession, startStream, stopStream } from "../lib/tauri-commands";
 
 interface SessionProps {
   roomCode: string;
   participantId: string;
-  serverUrl: string;
-  token: string;
   onLeave: () => void;
-}
-
-interface ShareRequest {
-  requesterId: string;
 }
 
 export default function Session({
   roomCode,
   participantId,
-  serverUrl,
-  token,
   onLeave,
 }: SessionProps) {
-  const [room, setRoom] = useState<Room | null>(null);
-  const [localParticipant, setLocalParticipant] = useState<LocalParticipant | null>(null);
-  const [remoteParticipants, setRemoteParticipants] = useState<RemoteParticipant[]>([]);
   const [connected, setConnected] = useState(false);
   const [isSharing, setIsSharing] = useState(false);
-  const [activeSharer, setActiveSharer] = useState<string | null>(null);
-  const [shareRequest, setShareRequest] = useState<ShareRequest | null>(null);
-  const [remoteScreenTrack, setRemoteScreenTrack] = useState<RemoteTrackPublication | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
-  const screenVideoRef = useRef<HTMLVideoElement>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const wsRef = useRef<WebSocket | null>(null);
+  const retryRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const updateParticipants = useCallback((r: Room) => {
-    setRemoteParticipants(Array.from(r.remoteParticipants.values()));
-    setLocalParticipant(r.localParticipant ?? null);
-  }, []);
+  const connectWs = useCallback(() => {
+    const ws = new WebSocket("ws://127.0.0.1:9001");
+    wsRef.current = ws;
 
-  const findScreenTrack = useCallback((r: Room) => {
-    for (const p of r.remoteParticipants.values()) {
-      for (const pub of p.trackPublications.values()) {
-        if (pub.source === Track.Source.ScreenShare && pub.track) {
-          setRemoteScreenTrack(pub);
-          return;
-        }
-      }
-    }
-    setRemoteScreenTrack(null);
-  }, []);
-
-  useEffect(() => {
-    console.log("[Session] Mounting", {
-      roomCode,
-      participantId,
-      serverUrl,
-      token: token.slice(0, 30) + "...",
-      url: window.location.href,
-    });
-    console.log("[Session] WebRTC check:", {
-      RTCPeerConnection: typeof RTCPeerConnection,
-      mediaDevices: typeof navigator.mediaDevices,
-      getUserMedia: typeof navigator.mediaDevices?.getUserMedia,
-      userAgent: navigator.userAgent,
-    });
-
-    const r = new Room({
-      adaptiveStream: true,
-      dynacast: true,
-    });
-
-    r.on(RoomEvent.Connected, () => {
-      console.log("[Session] Connected");
+    ws.onopen = () => {
       setConnected(true);
-      updateParticipants(r);
-    });
-
-    r.on(RoomEvent.ParticipantConnected, (p) => {
-      console.log("[Session] Participant joined:", p.identity);
-      updateParticipants(r);
-    });
-    r.on(RoomEvent.ParticipantDisconnected, (p) => {
-      console.log("[Session] Participant left:", p.identity);
-      updateParticipants(r);
-      findScreenTrack(r);
-    });
-
-    r.on(RoomEvent.TrackPublished, (pub, participant) => {
-      console.log("[Session] Track published:", pub.source, "by", participant.identity);
-      if (pub.source === Track.Source.ScreenShare) {
-        findScreenTrack(r);
-        if (participant instanceof RemoteParticipant) {
-          setActiveSharer(participant.identity);
-        }
-      }
-    });
-
-    r.on(RoomEvent.TrackUnpublished, (pub) => {
-      console.log("[Session] Track unpublished:", pub.source);
-      if (pub.source === Track.Source.ScreenShare) {
-        findScreenTrack(r);
-        setActiveSharer(null);
-      }
-    });
-
-    r.on(RoomEvent.Disconnected, () => {
-      console.log("[Session] Disconnected");
-      setConnected(false);
-    });
-
-    console.log("[Session] Calling r.connect...");
-    r.connect(serverUrl, token).catch((e: Error) => {
-      console.error("[Session] Connect failed:", e);
-      setError(`Connection failed: ${e.message || e}`);
-    });
-
-    setRoom(r);
-    return () => {
-      void r.disconnect();
+      setError(null);
     };
-  }, [serverUrl, token, updateParticipants, findScreenTrack, roomCode, participantId]);
+
+    ws.onmessage = (event) => {
+      if (event.data instanceof Blob) {
+        const url = URL.createObjectURL(event.data);
+        const img = new Image();
+        img.onload = () => {
+          const canvas = canvasRef.current;
+          if (canvas) {
+            const ctx = canvas.getContext("2d");
+            if (ctx) {
+              canvas.width = img.width;
+              canvas.height = img.height;
+              ctx.drawImage(img, 0, 0);
+            }
+          }
+          URL.revokeObjectURL(url);
+        };
+        img.src = url;
+      }
+    };
+
+    ws.onclose = () => {
+      setConnected(false);
+      retryRef.current = setTimeout(connectWs, 1000);
+    };
+
+    ws.onerror = () => {
+      ws.close();
+    };
+  }, []);
 
   useEffect(() => {
-    if (!remoteScreenTrack?.track) return;
-    const el = screenVideoRef.current;
-    if (!el) return;
-    remoteScreenTrack.track.attach(el);
+    connectWs();
     return () => {
-      remoteScreenTrack.track?.detach(el);
+      if (retryRef.current) clearTimeout(retryRef.current);
+      wsRef.current?.close();
     };
-  }, [remoteScreenTrack]);
+  }, [connectWs]);
 
-  const handleShareStarted = () => {
-    setIsSharing(true);
-    setActiveSharer(participantId);
-  };
-
-  const handleShareStopped = () => {
-    setIsSharing(false);
-    setActiveSharer(null);
-  };
-
-  const handleHandoffComplete = async () => {
-    setShareRequest(null);
-    if (activeSharer === participantId) {
-      if (room?.localParticipant) {
-        await room.localParticipant.setScreenShareEnabled(true);
+  const handleShare = async () => {
+    try {
+      if (isSharing) {
+        await stopStream();
+        setIsSharing(false);
+      } else {
+        await startStream();
         setIsSharing(true);
       }
-    } else {
-      setIsSharing(false);
-      setActiveSharer(null);
+    } catch (e) {
+      setError(String(e));
     }
   };
 
   const handleLeave = async () => {
-    if (room) {
-      void room.disconnect();
+    if (retryRef.current) clearTimeout(retryRef.current);
+    if (isSharing) {
+      await stopStream();
     }
+    wsRef.current?.close();
     await leaveSession(roomCode, participantId);
     onLeave();
   };
@@ -198,113 +117,46 @@ export default function Session({
           </div>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
-          <MicToggle localParticipant={localParticipant} />
-          <ShareButton
-            localParticipant={localParticipant}
-            roomCode={roomCode}
-            participantId={participantId}
-            isSharing={isSharing}
-            onShareStarted={handleShareStarted}
-            onShareStopped={handleShareStopped}
-          />
+          <button className={isSharing ? "danger" : "primary"} onClick={handleShare}>
+            {isSharing ? "Stop Sharing" : "Share Screen"}
+          </button>
           <button className="danger" onClick={handleLeave}>Leave</button>
         </div>
       </header>
 
       <div style={{ flex: 1, display: "flex", overflow: "hidden" }}>
         <div style={{ flex: 1, background: "#000", position: "relative" }}>
-          {remoteScreenTrack?.track ? (
-            <video
-              ref={screenVideoRef}
-              style={{ width: "100%", height: "100%", objectFit: "contain" }}
-            />
-          ) : (
+          <canvas
+            ref={canvasRef}
+            style={{ width: "100%", height: "100%", objectFit: "contain" }}
+          />
+          {!connected && (
             <div style={{
-              width: "100%",
-              height: "100%",
-              display: "flex",
-              flexDirection: "column",
-              alignItems: "center",
-              justifyContent: "center",
-              gap: "0.75rem",
+              position: "absolute",
+              top: "50%",
+              left: "50%",
+              transform: "translate(-50%, -50%)",
+              color: "var(--text-muted)",
+              textAlign: "center",
             }}>
-              <div style={{
-                width: 64,
-                height: 64,
-                borderRadius: "50%",
-                background: "var(--surface)",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                fontSize: "1.5rem",
-                color: "var(--text-muted)",
-              }}>
-                {activeSharer ? "..." : "~"}
-              </div>
-              <p style={{ color: "var(--text-muted)", fontSize: "0.9rem" }}>
-                {activeSharer ? "Screen share loading..." : "No one is sharing their screen"}
-              </p>
-              {!activeSharer && (
-                <p style={{ color: "var(--text-muted)", fontSize: "0.8rem" }}>
-                  Click "Share Screen" to get started
-                </p>
-              )}
+              <p>Connecting to stream server...</p>
+            </div>
+          )}
+          {connected && !isSharing && (
+            <div style={{
+              position: "absolute",
+              top: "50%",
+              left: "50%",
+              transform: "translate(-50%, -50%)",
+              color: "var(--text-muted)",
+              textAlign: "center",
+            }}>
+              <p>No one is sharing their screen</p>
+              <p style={{ fontSize: "0.8rem" }}>Click "Share Screen" to get started</p>
             </div>
           )}
         </div>
-
-        <aside style={{
-          width: 220,
-          background: "var(--surface)",
-          borderLeft: "1px solid var(--border)",
-          padding: "1rem",
-          display: "flex",
-          flexDirection: "column",
-          gap: "0.75rem",
-          overflow: "auto",
-        }}>
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-            <h3 style={{ fontSize: "0.85rem", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em", color: "var(--text-muted)" }}>
-              Participants
-            </h3>
-            <span style={{ fontSize: "0.75rem", color: "var(--text-muted)", background: "var(--bg)", padding: "0.15rem 0.5rem", borderRadius: 12 }}>
-              {remoteParticipants.length + 1}
-            </span>
-          </div>
-
-          <ul style={{ listStyle: "none", display: "flex", flexDirection: "column", gap: "0.25rem" }}>
-            <li style={{ display: "flex", alignItems: "center", gap: "0.5rem", padding: "0.4rem 0.5rem", borderRadius: "var(--radius)", background: "var(--bg)" }}>
-              <div style={{ width: 8, height: 8, borderRadius: "50%", background: "var(--success)" }} />
-              <span style={{ fontSize: "0.85rem", flex: 1 }}>You</span>
-              {isSharing && <span style={{ fontSize: "0.7rem", color: "var(--success)" }}>sharing</span>}
-            </li>
-            {remoteParticipants.map((p) => (
-              <li key={p.identity} style={{ display: "flex", alignItems: "center", gap: "0.5rem", padding: "0.4rem 0.5rem", borderRadius: "var(--radius)" }}>
-                <div style={{ width: 8, height: 8, borderRadius: "50%", background: "var(--success)" }} />
-                <span style={{ fontSize: "0.85rem", flex: 1 }}>{p.identity.slice(0, 8)}</span>
-                {activeSharer === p.identity && (
-                  <span style={{ fontSize: "0.7rem", color: "var(--success)" }}>sharing</span>
-                )}
-              </li>
-            ))}
-          </ul>
-
-          <div style={{ marginTop: "auto", padding: "0.5rem", background: "var(--bg)", borderRadius: "var(--radius)", fontSize: "0.75rem", color: "var(--text-muted)" }}>
-            {connected ? "Connected to server" : "Connecting..."}
-          </div>
-        </aside>
       </div>
-
-      {shareRequest && (
-        <HandoffModal
-          roomCode={roomCode}
-          participantId={participantId}
-          requesterId={shareRequest.requesterId}
-          isCurrentSharer={activeSharer === participantId}
-          onHandoffComplete={handleHandoffComplete}
-          onDismiss={() => setShareRequest(null)}
-        />
-      )}
 
       {error && (
         <div style={{
