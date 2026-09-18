@@ -1,0 +1,36 @@
+{
+  "name": "partagi",
+  "version": "1.0.0",
+  "description": "Lightweight P2P screen sharing for small teams",
+  "private": true,
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "preview": "vite preview",
+    "tauri": "tauri"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "devEngines": {
+    "packageManager": {
+      "name": "pnpm",
+      "version": "^11.3.0",
+      "onFail": "download"
+    }
+  },
+  "type": "module",
+  "devDependencies": {
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@vitejs/plugin-react": "^6.1.1",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.0"
+  },
+  "dependencies": {
+    "@tauri-apps/api": "^2.11.1",
+    "livekit-client": "^2.22.3",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0"
+  }
+}
