@@ -40,6 +40,7 @@ export default function Session({
   const [shareRequest, setShareRequest] = useState<ShareRequest | null>(null);
   const [remoteScreenTrack, setRemoteScreenTrack] = useState<RemoteTrackPublication | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
   const screenVideoRef = useRef<HTMLVideoElement>(null);
 
   const updateParticipants = useCallback((r: Room) => {
@@ -70,10 +71,7 @@ export default function Session({
       updateParticipants(r);
     });
 
-    r.on(RoomEvent.ParticipantConnected, () => {
-      updateParticipants(r);
-    });
-
+    r.on(RoomEvent.ParticipantConnected, () => updateParticipants(r));
     r.on(RoomEvent.ParticipantDisconnected, () => {
       updateParticipants(r);
       findScreenTrack(r);
@@ -95,18 +93,15 @@ export default function Session({
       }
     });
 
-    r.on(RoomEvent.Disconnected, () => {
-      setConnected(false);
-    });
+    r.on(RoomEvent.Disconnected, () => setConnected(false));
 
     r.connect(serverUrl, token).catch((e: Error) => {
       setError(`Connection failed: ${e.message || e}`);
     });
 
     setRoom(r);
-
     return () => {
-      r.disconnect();
+      void r.disconnect();
     };
   }, [serverUrl, token, updateParticipants, findScreenTrack]);
 
@@ -145,38 +140,53 @@ export default function Session({
 
   const handleLeave = async () => {
     if (room) {
-      room.disconnect();
+      void room.disconnect();
     }
     await leaveSession(roomCode, participantId);
     onLeave();
   };
 
+  const copyCode = async () => {
+    await navigator.clipboard.writeText(roomCode);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: "1rem", height: "100vh" }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-        <h2 style={{ margin: 0 }}>
-          Room: <code>{roomCode}</code>
-        </h2>
-        <button onClick={handleLeave}>Leave</button>
-      </div>
+    <div style={{ display: "flex", flexDirection: "column", height: "100vh" }}>
+      <header style={{
+        display: "flex",
+        justifyContent: "space-between",
+        alignItems: "center",
+        padding: "0.75rem 1.25rem",
+        borderBottom: "1px solid var(--border)",
+        background: "var(--surface)",
+      }}>
+        <div style={{ display: "flex", alignItems: "center", gap: "1rem" }}>
+          <span style={{ fontWeight: 600, fontSize: "0.95rem" }}>Partagi</span>
+          <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+            <code style={{ fontSize: "0.8rem" }}>{roomCode}</code>
+            <button onClick={copyCode} style={{ padding: "0.25rem 0.5rem", fontSize: "0.75rem" }}>
+              {copied ? "Copied" : "Copy"}
+            </button>
+          </div>
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
+          <MicToggle localParticipant={localParticipant} />
+          <ShareButton
+            localParticipant={localParticipant}
+            roomCode={roomCode}
+            participantId={participantId}
+            isSharing={isSharing}
+            onShareStarted={handleShareStarted}
+            onShareStopped={handleShareStopped}
+          />
+          <button className="danger" onClick={handleLeave}>Leave</button>
+        </div>
+      </header>
 
-      <div style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}>
-        <MicToggle localParticipant={localParticipant} />
-        <ShareButton
-          localParticipant={localParticipant}
-          roomCode={roomCode}
-          participantId={participantId}
-          isSharing={isSharing}
-          onShareStarted={handleShareStarted}
-          onShareStopped={handleShareStopped}
-        />
-        <span style={{ padding: "0.5rem 1rem", color: "#666" }}>
-          {connected ? "Connected" : "Connecting..."}
-        </span>
-      </div>
-
-      <div style={{ flex: 1, display: "flex", gap: "1rem" }}>
-        <div style={{ flex: 1, background: "#111", borderRadius: 8, position: "relative" }}>
+      <div style={{ flex: 1, display: "flex", overflow: "hidden" }}>
+        <div style={{ flex: 1, background: "#000", position: "relative" }}>
           {remoteScreenTrack?.track ? (
             <video
               ref={screenVideoRef}
@@ -187,32 +197,76 @@ export default function Session({
               width: "100%",
               height: "100%",
               display: "flex",
+              flexDirection: "column",
               alignItems: "center",
               justifyContent: "center",
-              color: "#666",
+              gap: "0.75rem",
             }}>
-              {activeSharer ? "Screen share loading..." : "No one is sharing their screen"}
+              <div style={{
+                width: 64,
+                height: 64,
+                borderRadius: "50%",
+                background: "var(--surface)",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                fontSize: "1.5rem",
+                color: "var(--text-muted)",
+              }}>
+                {activeSharer ? "..." : "~"}
+              </div>
+              <p style={{ color: "var(--text-muted)", fontSize: "0.9rem" }}>
+                {activeSharer ? "Screen share loading..." : "No one is sharing their screen"}
+              </p>
+              {!activeSharer && (
+                <p style={{ color: "var(--text-muted)", fontSize: "0.8rem" }}>
+                  Click "Share Screen" to get started
+                </p>
+              )}
             </div>
           )}
         </div>
 
-        <div style={{ width: 200, display: "flex", flexDirection: "column", gap: "0.5rem" }}>
-          <h3 style={{ margin: 0 }}>Participants ({remoteParticipants.length + 1})</h3>
-          <ul style={{ listStyle: "none", padding: 0, margin: 0 }}>
-            <li style={{ padding: "0.25rem 0", fontWeight: "bold" }}>
-              You ({participantId.slice(0, 8)})
-              {isSharing && <span style={{ color: "#22c55e" }}> (sharing)</span>}
+        <aside style={{
+          width: 220,
+          background: "var(--surface)",
+          borderLeft: "1px solid var(--border)",
+          padding: "1rem",
+          display: "flex",
+          flexDirection: "column",
+          gap: "0.75rem",
+          overflow: "auto",
+        }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+            <h3 style={{ fontSize: "0.85rem", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em", color: "var(--text-muted)" }}>
+              Participants
+            </h3>
+            <span style={{ fontSize: "0.75rem", color: "var(--text-muted)", background: "var(--bg)", padding: "0.15rem 0.5rem", borderRadius: 12 }}>
+              {remoteParticipants.length + 1}
+            </span>
+          </div>
+
+          <ul style={{ listStyle: "none", display: "flex", flexDirection: "column", gap: "0.25rem" }}>
+            <li style={{ display: "flex", alignItems: "center", gap: "0.5rem", padding: "0.4rem 0.5rem", borderRadius: "var(--radius)", background: "var(--bg)" }}>
+              <div style={{ width: 8, height: 8, borderRadius: "50%", background: "var(--success)" }} />
+              <span style={{ fontSize: "0.85rem", flex: 1 }}>You</span>
+              {isSharing && <span style={{ fontSize: "0.7rem", color: "var(--success)" }}>sharing</span>}
             </li>
             {remoteParticipants.map((p) => (
-              <li key={p.identity} style={{ padding: "0.25rem 0" }}>
-                {p.identity.slice(0, 8)}
+              <li key={p.identity} style={{ display: "flex", alignItems: "center", gap: "0.5rem", padding: "0.4rem 0.5rem", borderRadius: "var(--radius)" }}>
+                <div style={{ width: 8, height: 8, borderRadius: "50%", background: "var(--success)" }} />
+                <span style={{ fontSize: "0.85rem", flex: 1 }}>{p.identity.slice(0, 8)}</span>
                 {activeSharer === p.identity && (
-                  <span style={{ color: "#22c55e" }}> (sharing)</span>
+                  <span style={{ fontSize: "0.7rem", color: "var(--success)" }}>sharing</span>
                 )}
               </li>
             ))}
           </ul>
-        </div>
+
+          <div style={{ marginTop: "auto", padding: "0.5rem", background: "var(--bg)", borderRadius: "var(--radius)", fontSize: "0.75rem", color: "var(--text-muted)" }}>
+            {connected ? "Connected to server" : "Connecting..."}
+          </div>
+        </aside>
       </div>
 
       {shareRequest && (
@@ -226,7 +280,21 @@ export default function Session({
         />
       )}
 
-      {error && <p style={{ color: "red" }}>{error}</p>}
+      {error && (
+        <div style={{
+          position: "fixed",
+          bottom: 16,
+          left: "50%",
+          transform: "translateX(-50%)",
+          background: "var(--danger)",
+          color: "white",
+          padding: "0.5rem 1rem",
+          borderRadius: "var(--radius)",
+          fontSize: "0.85rem",
+        }}>
+          {error}
+        </div>
+      )}
     </div>
   );
 }

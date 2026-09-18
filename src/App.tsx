@@ -1,7 +1,7 @@
 import { useState } from "react";
 import Home from "./components/Home";
 import Session from "./components/Session";
-import { createSession, joinSession } from "./lib/tauri-commands";
+import { joinSession } from "./lib/tauri-commands";
 
 type View = "home" | "session";
 
@@ -17,16 +17,15 @@ export default function App() {
   const [session, setSession] = useState<SessionState | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const handleCreate = async () => {
+  const handleCreate = async (code: string) => {
     const participantId = crypto.randomUUID().slice(0, 12);
     try {
-      const createRes = await createSession(participantId);
-      const joinRes = await joinSession(createRes.code, participantId);
+      const res = await joinSession(code, participantId);
       setSession({
-        code: createRes.code,
+        code: res.code,
         participantId,
-        token: joinRes.token,
-        serverUrl: joinRes.server_url,
+        token: res.token,
+        serverUrl: res.server_url,
       });
       setView("session");
     } catch (e) {
@@ -51,9 +50,13 @@ export default function App() {
   };
 
   return (
-    <div style={{ fontFamily: "system-ui, sans-serif", padding: "2rem" }}>
-      <h1>Partagi</h1>
-      {error && <p style={{ color: "red" }}>{error}</p>}
+    <div style={{ height: "100vh", width: "100vw" }}>
+      {error && (
+        <div style={{ position: "fixed", top: 16, right: 16, background: "var(--danger)", color: "white", padding: "0.75rem 1rem", borderRadius: "var(--radius)", fontSize: "0.85rem", zIndex: 2000 }}>
+          {error}
+          <button onClick={() => setError(null)} style={{ marginLeft: "0.5rem", background: "transparent", border: "none", color: "white", padding: 0 }}>x</button>
+        </div>
+      )}
       {view === "home" && (
         <Home onCreateSession={handleCreate} onJoinSession={handleJoin} />
       )}
