@@ -6,7 +6,7 @@ use tokio::process::Command;
 pub type FrameBroadcaster = broadcast::Sender<Vec<u8>>;
 
 pub fn create_broadcaster() -> FrameBroadcaster {
-    let (tx, _) = broadcast::channel(4);
+    let (tx, _) = broadcast::channel(8);
     tx
 }
 
@@ -32,7 +32,7 @@ impl ScreenCapture {
         tokio::spawn(async move {
             while running.load(Ordering::Relaxed) {
                 let output = Command::new("grim")
-                    .args(["-t", "jpeg", "-q", "60", "/tmp/partagi-capture.jpg"])
+                    .args(["-t", "jpeg", "-q", "40", "-s", "0.75", "/tmp/partagi-capture.jpg"])
                     .output()
                     .await;
 
@@ -44,8 +44,6 @@ impl ScreenCapture {
                     }
                     _ => {}
                 }
-
-                tokio::time::sleep(std::time::Duration::from_millis(33)).await;
             }
         });
 
