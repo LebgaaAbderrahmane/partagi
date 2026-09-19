@@ -4,24 +4,28 @@ import { leaveSession, startStream, stopStream } from "../lib/tauri-commands";
 interface SessionProps {
   roomCode: string;
   participantId: string;
+  streamUrl: string;
   onLeave: () => void;
 }
 
 export default function Session({
   roomCode,
   participantId,
+  streamUrl,
   onLeave,
 }: SessionProps) {
   const [connected, setConnected] = useState(false);
   const [isSharing, setIsSharing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  const [viewerCopied, setViewerCopied] = useState(false);
+  const viewerUrl = streamUrl.replace(/^ws:\/\//, "http://").replace(/:\d+$/, ":9002");
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const wsRef = useRef<WebSocket | null>(null);
   const retryRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const connectWs = useCallback(() => {
-    const ws = new WebSocket("ws://127.0.0.1:9001");
+    const ws = new WebSocket(streamUrl);
     wsRef.current = ws;
 
     ws.onopen = () => {
@@ -57,7 +61,7 @@ export default function Session({
     ws.onerror = () => {
       ws.close();
     };
-  }, []);
+  }, [streamUrl]);
 
   useEffect(() => {
     connectWs();
@@ -97,6 +101,12 @@ export default function Session({
     setTimeout(() => setCopied(false), 2000);
   };
 
+  const copyViewerUrl = async () => {
+    await navigator.clipboard.writeText(viewerUrl);
+    setViewerCopied(true);
+    setTimeout(() => setViewerCopied(false), 2000);
+  };
+
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100vh" }}>
       <header style={{
@@ -112,7 +122,13 @@ export default function Session({
           <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
             <code style={{ fontSize: "0.8rem" }}>{roomCode}</code>
             <button onClick={copyCode} style={{ padding: "0.25rem 0.5rem", fontSize: "0.75rem" }}>
-              {copied ? "Copied" : "Copy"}
+              {copied ? "Copied" : "Copy Code"}
+            </button>
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+            <code style={{ fontSize: "0.7rem", color: "var(--text-muted)" }}>{viewerUrl}</code>
+            <button onClick={copyViewerUrl} style={{ padding: "0.25rem 0.5rem", fontSize: "0.75rem" }}>
+              {viewerCopied ? "Copied" : "Copy Link"}
             </button>
           </div>
         </div>
