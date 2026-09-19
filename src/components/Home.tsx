@@ -1,23 +1,40 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { createSession } from "../lib/tauri-commands";
 
 interface HomeProps {
-  onCreateSession: (code: string) => void;
-  onJoinSession: (code: string) => void;
+  onJoinSession: (code: string, participantId: string) => void;
 }
 
-export default function Home({ onCreateSession, onJoinSession }: HomeProps) {
+const STORAGE_KEY = "partagi-participant-id";
+
+export default function Home({ onJoinSession }: HomeProps) {
+  const [participantId, setParticipantId] = useState(() =>
+    localStorage.getItem(STORAGE_KEY) || ""
+  );
+  const [rememberMe, setRememberMe] = useState(() =>
+    localStorage.getItem(STORAGE_KEY) !== null
+  );
   const [joinCode, setJoinCode] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (rememberMe && participantId) {
+      localStorage.setItem(STORAGE_KEY, participantId);
+    } else {
+      localStorage.removeItem(STORAGE_KEY);
+    }
+  }, [rememberMe, participantId]);
+
+  const getId = () => participantId.trim() || crypto.randomUUID().slice(0, 12);
 
   const handleCreate = async () => {
     setLoading(true);
     setError(null);
     try {
-      const participantId = crypto.randomUUID().slice(0, 12);
-      const res = await createSession(participantId);
-      onCreateSession(res.code);
+      const id = getId();
+      const res = await createSession(id);
+      onJoinSession(res.code, id);
     } catch (e) {
       setError(String(e));
     } finally {
@@ -31,7 +48,7 @@ export default function Home({ onCreateSession, onJoinSession }: HomeProps) {
     setLoading(true);
     setError(null);
     try {
-      onJoinSession(code);
+      onJoinSession(code, getId());
     } catch (e) {
       setError(String(e));
     } finally {
@@ -49,6 +66,25 @@ export default function Home({ onCreateSession, onJoinSession }: HomeProps) {
       </div>
 
       <div style={{ display: "flex", flexDirection: "column", gap: "1rem", width: 320 }}>
+        <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+          <label style={{ fontSize: "0.8rem", color: "var(--text-muted)" }}>Your Name</label>
+          <input
+            type="text"
+            placeholder="Enter your name (optional)"
+            value={participantId}
+            onChange={(e) => setParticipantId(e.target.value)}
+          />
+          <label style={{ display: "flex", alignItems: "center", gap: "0.5rem", fontSize: "0.8rem", color: "var(--text-muted)", cursor: "pointer" }}>
+            <input
+              type="checkbox"
+              checked={rememberMe}
+              onChange={(e) => setRememberMe(e.target.checked)}
+              style={{ width: "auto" }}
+            />
+            Remember me
+          </label>
+        </div>
+
         <button className="primary" onClick={handleCreate} disabled={loading} style={{ padding: "0.75rem", fontSize: "1rem" }}>
           {loading ? "Creating..." : "New Session"}
         </button>

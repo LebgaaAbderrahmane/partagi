@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>Partagi Viewer</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      background: #000;
+      color: #e0e0e0;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      overflow: hidden;
+      height: 100dvh;
+      width: 100vw;
+      display: flex;
+      flex-direction: column;
+    }
+
+    #canvas {
+      flex: 1;
+      width: 100%;
+      object-fit: contain;
+      background: #000;
+    }
+
+    .status-bar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 0.5rem 1rem;
+      background: #111;
+      border-top: 1px solid #222;
+      font-size: 0.8rem;
+      min-height: 2.5rem;
+      flex-shrink: 0;
+    }
+
+    .status-left {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    .status-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: #e74c3c;
+      transition: background 0.3s;
+    }
+
+    .status-dot.connected {
+      background: #2ecc71;
+    }
+
+    .status-dot.connecting {
+      background: #f39c12;
+      animation: pulse 1s ease-in-out infinite;
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.4; }
+    }
+
+    .overlay {
+      position: fixed;
+      inset: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 1rem;
+      background: rgba(0, 0, 0, 0.85);
+      z-index: 10;
+      transition: opacity 0.3s;
+    }
+
+    .overlay.hidden {
+      opacity: 0;
+      pointer-events: none;
+    }
+
+    .overlay-icon {
+      width: 64px;
+      height: 64px;
+      border-radius: 50%;
+      background: #1a1a2e;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.5rem;
+    }
+
+    .overlay-text {
+      font-size: 1rem;
+      color: #888;
+    }
+
+    .overlay-sub {
+      font-size: 0.8rem;
+      color: #555;
+    }
+
+    .fullscreen-btn {
+      position: fixed;
+      top: 0.75rem;
+      right: 0.75rem;
+      background: rgba(255,255,255,0.1);
+      border: 1px solid rgba(255,255,255,0.15);
+      color: #ccc;
+      padding: 0.4rem 0.7rem;
+      border-radius: 6px;
+      font-size: 0.75rem;
+      cursor: pointer;
+      z-index: 20;
+      backdrop-filter: blur(4px);
+      transition: background 0.2s;
+    }
+
+    .fullscreen-btn:hover {
+      background: rgba(255,255,255,0.2);
+    }
+
+    .reconnect-info {
+      font-size: 0.75rem;
+      color: #555;
+    }
+  </style>
+</head>
+<body>
+  <canvas id="canvas"></canvas>
+
+  <div class="overlay" id="overlay">
+    <div class="overlay-icon" id="overlay-icon">~</div>
+    <div class="overlay-text" id="overlay-text">Connecting...</div>
+    <div class="overlay-sub" id="overlay-sub"></div>
+  </div>
+
+  <button class="fullscreen-btn" id="fullscreen-btn" onclick="toggleFullscreen()">Fullscreen</button>
+
+  <div class="status-bar">
+    <div class="status-left">
+      <div class="status-dot" id="status-dot"></div>
+      <span id="status-text">Disconnected</span>
+    </div>
+    <span class="reconnect-info" id="reconnect-info"></span>
+  </div>
+
+  <script>
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+    const overlay = document.getElementById('overlay');
+    const overlayIcon = document.getElementById('overlay-icon');
+    const overlayText = document.getElementById('overlay-text');
+    const overlaySub = document.getElementById('overlay-sub');
+    const statusDot = document.getElementById('status-dot');
+    const statusText = document.getElementById('status-text');
+    const reconnectInfo = document.getElementById('reconnect-info');
+    const fullscreenBtn = document.getElementById('fullscreen-btn');
+
+    let ws = null;
+    let reconnectDelay = 1000;
+    let reconnectTimer = null;
+    let frameCount = 0;
+
+    function getWsUrl() {
+      const host = window.location.hostname;
+      return 'ws://' + host + ':9001';
+    }
+
+    function setStatus(state, text) {
+      statusDot.className = 'status-dot ' + state;
+      statusText.textContent = text;
+    }
+
+    function setOverlay(show, icon, text, sub) {
+      overlay.classList.toggle('hidden', !show);
+      if (icon) overlayIcon.textContent = icon;
+      if (text) overlayText.textContent = text;
+      if (sub !== undefined) overlaySub.textContent = sub;
+    }
+
+    function connect() {
+      if (ws && (ws.readyState === WebSocket.CONNECTING || ws.readyState === WebSocket.OPEN)) {
+        return;
+      }
+
+      setStatus('connecting', 'Connecting...');
+      setOverlay(true, '~', 'Connecting...', '');
+      reconnectInfo.textContent = '';
+
+      const url = getWsUrl();
+      ws = new WebSocket(url);
+
+      ws.onopen = () => {
+        setStatus('connected', 'Connected');
+        setOverlay(true, ' Waiting for stream...', 'Connected — waiting for sharer to start');
+        reconnectDelay = 1000;
+      };
+
+      ws.onmessage = (event) => {
+        if (event.data instanceof Blob) {
+          const blobUrl = URL.createObjectURL(event.data);
+          const img = new Image();
+          img.onload = () => {
+            canvas.width = img.width;
+            canvas.height = img.height;
+            ctx.drawImage(img, 0, 0);
+            URL.revokeObjectURL(blobUrl);
+
+            frameCount++;
+            if (frameCount === 1) {
+              setOverlay(false);
+            }
+          };
+          img.src = blobUrl;
+        }
+      };
+
+      ws.onclose = () => {
+        setStatus('disconnected', 'Disconnected');
+        if (frameCount === 0) {
+          setOverlay(true, '!', 'Disconnected', 'Reconnecting...');
+        } else {
+          setOverlay(true, '!', 'Stream interrupted', 'Reconnecting...');
+        }
+        scheduleReconnect();
+      };
+
+      ws.onerror = () => {
+        ws.close();
+      };
+    }
+
+    function scheduleReconnect() {
+      if (reconnectTimer) clearTimeout(reconnectTimer);
+      const delay = reconnectDelay;
+      reconnectDelay = Math.min(reconnectDelay * 1.5, 5000);
+      reconnectInfo.textContent = `Reconnecting in ${Math.round(delay / 1000)}s...`;
+      reconnectTimer = setTimeout(() => {
+        reconnectInfo.textContent = '';
+        connect();
+      }, delay);
+    }
+
+    function toggleFullscreen() {
+      if (document.fullscreenElement) {
+        document.exitFullscreen();
+      } else {
+        document.documentElement.requestFullscreen().catch(() => {});
+      }
+    }
+
+    document.addEventListener('fullscreenchange', () => {
+      fullscreenBtn.textContent = document.fullscreenElement ? 'Exit FS' : 'Fullscreen';
+    });
+
+    document.addEventListener('dblclick', () => {
+      toggleFullscreen();
+    });
+
+    connect();
+  </script>
+</body>
+</html>
