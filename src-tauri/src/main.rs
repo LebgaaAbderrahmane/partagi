@@ -3,13 +3,13 @@ mod stream;
 use chrono::Utc;
 use jsonwebtoken::{encode, EncodingKey, Header};
 use serde::{Deserialize, Serialize};
+use futures_util::{SinkExt, StreamExt};
 use std::collections::HashMap;
 use std::net::UdpSocket;
+use tauri::State;
 use tokio::net::TcpListener;
 use tokio::sync::Mutex;
-use tauri::State;
 use tokio_tungstenite::accept_async;
-use futures_util::{SinkExt, StreamExt};
 use uuid::Uuid;
 
 const LIVEKIT_API_KEY: &str = "devkey";
@@ -17,6 +17,8 @@ const LIVEKIT_API_SECRET: &str = "secret";
 const LIVEKIT_SERVER_URL: &str = "ws://localhost:7880";
 const FRONTEND_URL: &str = "http://localhost:1420";
 const STREAM_PORT: u16 = 9001;
+const VIEWER_PORT: u16 = 9002;
+const VIEWER_HTML: &str = include_str!("../viewer.html");
 
 struct AppState {
     sessions: Mutex<HashMap<String, Session>>,
@@ -352,6 +354,26 @@ async fn run_stream_server(broadcaster: stream::FrameBroadcaster) {
     }
 }
 
+async fn run_viewer_server() {
+    use axum::{routing::get, Router};
+
+    let app = Router::new()
+        .route("/", get(|| async {
+            axum::response::Html(VIEWER_HTML)
+        }))
+        .route("/health", get(|| async { "ok" }));
+
+    let listener = tokio::net::TcpListener::bind(("0.0.0.0", VIEWER_PORT))
+        .await
+        .expect("Failed to bind viewer server");
+
+    println!("[viewer] HTTP viewer server listening on http://0.0.0.0:{}", VIEWER_PORT);
+
+    axum::serve(listener, app)
+        .await
+        .expect("Viewer server failed");
+}
+
 fn main() {
     let broadcaster = stream::create_broadcaster();
     let broadcaster_for_server = broadcaster.clone();
@@ -365,6 +387,7 @@ fn main() {
         })
         .setup(|_app| {
             tauri::async_runtime::spawn(run_stream_server(broadcaster_for_server));
+            tauri::async_runtime::spawn(run_viewer_server());
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
