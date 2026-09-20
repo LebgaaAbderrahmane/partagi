@@ -63,11 +63,13 @@ Existing tools (Google Meet, Discord, Zoom) route media through general-purpose 
 - Fullscreen support, auto-reconnect, responsive layout
 - No app install required for viewers
 
-### 5.4 Mic Audio (planned, not yet implemented)
+### 5.4 Mic Audio
 
-- All participants' microphones live by default (voice-call style)
-- Self-mute toggle
-- AI-based noise suppression
+- Mic capture via ffmpeg PulseAudio backend (16kHz mono PCM)
+- Streamed over same WebSocket with type prefix byte (`0x01` = video, `0x02` = audio)
+- Mic toggle button in Session UI
+- Desktop and mobile viewers play audio via Web Audio API
+- Audio stops when participant leaves session
 
 ### 5.5 AI Meeting Summary (planned, not yet implemented)
 
@@ -101,11 +103,12 @@ Existing tools (Google Meet, Discord, Zoom) route media through general-purpose 
 
 ```
 Desktop App (Sharer)
-  grim --JPEG--> broadcast channel --> WebSocket server (:9001) --> all viewers
+  grim --JPEG--> StreamFrame::Video --> broadcast channel --> WS server (:9001) --> all viewers
+  ffmpeg --PCM--> StreamFrame::Audio --> broadcast channel --> WS server (:9001) --> all viewers
   Axum HTTP server (:9002) --> serves viewer.html
 
 Viewer (Phone/Laptop)
-  Browser opens http://<host-ip>:9002 --> connects to WS --> canvas rendering
+  Browser opens http://<host-ip>:9002 --> connects to WS --> canvas (video) + Web Audio API (audio)
 ```
 
 ### 6.5 Bandwidth Notes
@@ -122,15 +125,14 @@ Viewer (Phone/Laptop)
 - Phase 2: Media (LiveKit-based, later replaced)
 - Phase 3: Pivot to grim + WebSocket streaming
 - Phase 4: Polish (dark theme, user ID, web viewer, FPS optimization, LAN access)
+- Multi-monitor support (select display to capture)
+- Share handoff (takeover sharing)
+- Mic audio over WebSocket
 
 ### Next
 
-- Cleanup: remove dead code, update docs
-- Multi-monitor support (select display to capture)
-- Share handoff UX (request/approve flow)
-- Mic audio over WebSocket
-- Platform support (macOS, Windows capture backends)
 - Package as .deb / AppImage
+- Platform support (macOS, Windows capture backends)
 
 ### Future (post-v1)
 
