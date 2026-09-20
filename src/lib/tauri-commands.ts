@@ -95,9 +95,9 @@ export async function takeoverShare(
   return invoke("takeover_share", { code, participantId });
 }
 
-export async function startStream(): Promise<void> {
+export async function startStream(output?: string): Promise<void> {
   assertTauri();
-  return invoke("start_stream");
+  return invoke("start_stream", { output: output ?? null });
 }
 
 export async function stopStream(): Promise<void> {
@@ -108,4 +108,9 @@ export async function stopStream(): Promise<void> {
 export async function getStreamUrl(): Promise<string> {
   assertTauri();
   return invoke("get_stream_url");
+}
+
+export async function listOutputs(): Promise<string[]> {
+  assertTauri();
+  return invoke("list_outputs");
 }
