@@ -105,6 +105,16 @@ export async function stopStream(): Promise<void> {
   return invoke("stop_stream");
 }
 
+export async function startMic(): Promise<void> {
+  assertTauri();
+  return invoke("start_mic");
+}
+
+export async function stopMic(): Promise<void> {
+  assertTauri();
+  return invoke("stop_mic");
+}
+
 export async function getStreamUrl(): Promise<string> {
   assertTauri();
   return invoke("get_stream_url");

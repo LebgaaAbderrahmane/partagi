@@ -201,22 +201,53 @@
         reconnectDelay = 1000;
       };
 
+      let audioCtx = null;
+
       ws.onmessage = (event) => {
         if (event.data instanceof Blob) {
-          const blobUrl = URL.createObjectURL(event.data);
-          const img = new Image();
-          img.onload = () => {
-            canvas.width = img.width;
-            canvas.height = img.height;
-            ctx.drawImage(img, 0, 0);
-            URL.revokeObjectURL(blobUrl);
+          event.data.arrayBuffer().then((buf) => {
+            const view = new Uint8Array(buf);
+            if (view.length < 1) return;
 
-            frameCount++;
-            if (frameCount === 1) {
-              setOverlay(false);
+            const type = view[0];
+            const payload = view.slice(1);
+
+            if (type === 0x01) {
+              const blob = new Blob([payload], { type: 'image/jpeg' });
+              const blobUrl = URL.createObjectURL(blob);
+              const img = new Image();
+              img.onload = () => {
+                canvas.width = img.width;
+                canvas.height = img.height;
+                ctx.drawImage(img, 0, 0);
+                URL.revokeObjectURL(blobUrl);
+
+                frameCount++;
+                if (frameCount === 1) {
+                  setOverlay(false);
+                }
+              };
+              img.src = blobUrl;
+            } else if (type === 0x02) {
+              if (!audioCtx) {
+                audioCtx = new AudioContext({ sampleRate: 16000 });
+              }
+              if (audioCtx.state === 'suspended') {
+                audioCtx.resume();
+              }
+              const int16 = new Int16Array(payload.buffer, payload.byteOffset, payload.byteLength / 2);
+              const float32 = new Float32Array(int16.length);
+              for (let i = 0; i < int16.length; i++) {
+                float32[i] = int16[i] / 32768.0;
+              }
+              const audioBuffer = audioCtx.createBuffer(1, float32.length, 16000);
+              audioBuffer.getChannelData(0).set(float32);
+              const source = audioCtx.createBufferSource();
+              source.buffer = audioBuffer;
+              source.connect(audioCtx.destination);
+              source.start();
             }
-          };
-          img.src = blobUrl;
+          });
         }
       };
 

@@ -3,6 +3,8 @@ import {
   leaveSession,
   startStream,
   stopStream,
+  startMic,
+  stopMic,
   listOutputs,
   getParticipants,
   takeoverShare,
@@ -23,6 +25,7 @@ export default function Session({
 }: SessionProps) {
   const [connected, setConnected] = useState(false);
   const [isSharing, setIsSharing] = useState(false);
+  const [isMicOn, setIsMicOn] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const [viewerCopied, setViewerCopied] = useState(false);
@@ -39,6 +42,7 @@ export default function Session({
   const wsRef = useRef<WebSocket | null>(null);
   const retryRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const audioCtxRef = useRef<AudioContext | null>(null);
 
   const connectWs = useCallback(() => {
     const ws = new WebSocket(streamUrl);
@@ -51,21 +55,47 @@ export default function Session({
 
     ws.onmessage = (event) => {
       if (event.data instanceof Blob) {
-        const url = URL.createObjectURL(event.data);
-        const img = new Image();
-        img.onload = () => {
-          const canvas = canvasRef.current;
-          if (canvas) {
-            const ctx = canvas.getContext("2d");
-            if (ctx) {
-              canvas.width = img.width;
-              canvas.height = img.height;
-              ctx.drawImage(img, 0, 0);
+        event.data.arrayBuffer().then((buf) => {
+          const view = new Uint8Array(buf);
+          if (view.length < 1) return;
+
+          const type = view[0];
+          const payload = view.slice(1);
+
+          if (type === 0x01) {
+            const blob = new Blob([payload], { type: "image/jpeg" });
+            const url = URL.createObjectURL(blob);
+            const img = new Image();
+            img.onload = () => {
+              const canvas = canvasRef.current;
+              if (canvas) {
+                const ctx = canvas.getContext("2d");
+                if (ctx) {
+                  canvas.width = img.width;
+                  canvas.height = img.height;
+                  ctx.drawImage(img, 0, 0);
+                }
+              }
+              URL.revokeObjectURL(url);
+            };
+            img.src = url;
+          } else if (type === 0x02) {
+            const audioCtx = audioCtxRef.current;
+            if (audioCtx && audioCtx.state === "running") {
+              const int16 = new Int16Array(payload.buffer, payload.byteOffset, payload.byteLength / 2);
+              const float32 = new Float32Array(int16.length);
+              for (let i = 0; i < int16.length; i++) {
+                float32[i] = int16[i] / 32768.0;
+              }
+              const audioBuffer = audioCtx.createBuffer(1, float32.length, 16000);
+              audioBuffer.getChannelData(0).set(float32);
+              const source = audioCtx.createBufferSource();
+              source.buffer = audioBuffer;
+              source.connect(audioCtx.destination);
+              source.start();
             }
           }
-          URL.revokeObjectURL(url);
-        };
-        img.src = url;
+        });
       }
     };
 
@@ -80,11 +110,13 @@ export default function Session({
   }, [streamUrl]);
 
   useEffect(() => {
+    audioCtxRef.current = new AudioContext({ sampleRate: 16000 });
     connectWs();
     return () => {
       if (retryRef.current) clearTimeout(retryRef.current);
       if (pollRef.current) clearInterval(pollRef.current);
       wsRef.current?.close();
+      audioCtxRef.current?.close();
     };
   }, [connectWs]);
 
@@ -143,11 +175,32 @@ export default function Session({
     }
   };
 
+  const handleToggleMic = async () => {
+    try {
+      if (isMicOn) {
+        await stopMic();
+        setIsMicOn(false);
+      } else {
+        const ctx = audioCtxRef.current;
+        if (ctx && ctx.state === "suspended") {
+          await ctx.resume();
+        }
+        await startMic();
+        setIsMicOn(true);
+      }
+    } catch (e) {
+      setError(String(e));
+    }
+  };
+
   const handleLeave = async () => {
     if (retryRef.current) clearTimeout(retryRef.current);
     if (pollRef.current) clearInterval(pollRef.current);
     if (isSharing) {
       await stopStream();
+    }
+    if (isMicOn) {
+      await stopMic();
     }
     wsRef.current?.close();
     await leaveSession(roomCode, participantId);
@@ -192,6 +245,13 @@ export default function Session({
           </div>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
+          <button
+            className={isMicOn ? "primary" : ""}
+            onClick={handleToggleMic}
+            style={{ padding: "0.4rem 0.75rem", fontSize: "0.85rem" }}
+          >
+            {isMicOn ? "Mic On" : "Mic Off"}
+          </button>
           <button className={isSharing ? "danger" : "primary"} onClick={handleShare}>
             {isSharing ? "Stop Sharing" : "Share Screen"}
           </button>
@@ -258,7 +318,7 @@ export default function Session({
                         padding: "0.5rem 0.75rem",
                         borderRadius: "var(--radius)",
                         border: selectedOutput === o ? "1px solid var(--primary)" : "1px solid var(--border)",
-                        background: selectedOutput === o ? "rgba(var(--primary-rgb, 59,130,246), 0.1)" : "var(--bg)",
+                        background: selectedOutput === o ? "rgba(59,130,246,0.1)" : "var(--bg)",
                         cursor: "pointer",
                         fontSize: "0.85rem",
                       }}
