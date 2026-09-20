@@ -32,7 +32,7 @@ impl ScreenCapture {
         tokio::spawn(async move {
             while running.load(Ordering::Relaxed) {
                 let output = Command::new("grim")
-                    .args(["-t", "jpeg", "-q", "40", "-s", "0.75", "/tmp/partagi-capture.jpg"])
+                    .args(["-c", "-t", "jpeg", "-q", "40", "-s", "0.75", "/tmp/partagi-capture.jpg"])
                     .output()
                     .await;
 

@@ -1,7 +1,5 @@
 mod stream;
 
-use chrono::Utc;
-use jsonwebtoken::{encode, EncodingKey, Header};
 use serde::{Deserialize, Serialize};
 use futures_util::{SinkExt, StreamExt};
 use std::collections::HashMap;
@@ -12,10 +10,6 @@ use tokio::sync::Mutex;
 use tokio_tungstenite::accept_async;
 use uuid::Uuid;
 
-const LIVEKIT_API_KEY: &str = "devkey";
-const LIVEKIT_API_SECRET: &str = "secret";
-const LIVEKIT_SERVER_URL: &str = "ws://localhost:7880";
-const FRONTEND_URL: &str = "http://localhost:1420";
 const STREAM_PORT: u16 = 9001;
 const VIEWER_PORT: u16 = 9002;
 const VIEWER_HTML: &str = include_str!("../viewer.html");
@@ -44,59 +38,6 @@ struct CreateSessionResponse {
 struct JoinSessionResponse {
     code: String,
     stream_url: String,
-    session_url: String,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-struct LiveKitGrants {
-    #[serde(rename = "nbf")]
-    nbf: u64,
-    exp: u64,
-    #[serde(rename = "iss")]
-    iss: String,
-    sub: String,
-    #[serde(rename = "video")]
-    video: VideoGrants,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-struct VideoGrants {
-    room: String,
-    room_join: bool,
-    can_publish: bool,
-    can_subscribe: bool,
-    can_publish_data: bool,
-}
-
-fn generate_token(room: &str, identity: &str) -> String {
-    let now = Utc::now().timestamp() as u64;
-    let grants = LiveKitGrants {
-        nbf: now,
-        exp: now + 86400,
-        iss: LIVEKIT_API_KEY.to_string(),
-        sub: identity.to_string(),
-        video: VideoGrants {
-            room: room.to_string(),
-            room_join: true,
-            can_publish: true,
-            can_subscribe: true,
-            can_publish_data: true,
-        },
-    };
-
-    encode(
-        &Header::default(),
-        &grants,
-        &EncodingKey::from_secret(LIVEKIT_API_SECRET.as_bytes()),
-    )
-    .expect("Failed to generate token")
-}
-
-fn build_session_url(code: &str, token: &str) -> String {
-    format!(
-        "{}/session?code={}&token={}&server={}",
-        FRONTEND_URL, code, token, LIVEKIT_SERVER_URL
-    )
 }
 
 fn get_local_ip() -> String {
@@ -106,10 +47,6 @@ fn get_local_ip() -> String {
             Ok(s.local_addr()?.ip().to_string())
         })
         .unwrap_or_else(|_| "127.0.0.1".to_string())
-}
-
-fn build_stream_url(_code: &str) -> String {
-    format!("ws://{}:{}", get_local_ip(), STREAM_PORT)
 }
 
 #[tauri::command]
@@ -146,14 +83,11 @@ fn join_session(
         session.participants.push(participant_id.clone());
     }
 
-    let token = generate_token(&session.code, &participant_id);
-    let session_url = build_session_url(&session.code, &token);
-    let stream_url = build_stream_url(&session.code);
+    let stream_url = format!("ws://{}:{}", get_local_ip(), STREAM_PORT);
 
     Ok(JoinSessionResponse {
         code: session.code.clone(),
         stream_url,
-        session_url,
     })
 }
 
@@ -317,7 +251,7 @@ async fn run_stream_server(broadcaster: stream::FrameBroadcaster) {
         .await
         .expect("Failed to bind stream server");
 
-    println!("[stream] WebSocket server listening on ws://127.0.0.1:{}", STREAM_PORT);
+    println!("[stream] WebSocket server listening on ws://0.0.0.0:{}", STREAM_PORT);
 
     loop {
         if let Ok((stream, addr)) = listener.accept().await {
