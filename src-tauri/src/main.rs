@@ -233,10 +233,10 @@ fn takeover_share(state: State<AppState>, code: String, participant_id: String) 
 }
 
 #[tauri::command]
-async fn start_stream(state: State<'_, AppState>) -> Result<(), String> {
+async fn start_stream(state: State<'_, AppState>, output: Option<String>) -> Result<(), String> {
     let mut capture = state.capture.lock().await;
     let broadcaster = state.broadcaster.clone();
-    capture.start(broadcaster).await
+    capture.start(broadcaster, output).await
 }
 
 #[tauri::command]
@@ -244,6 +244,27 @@ fn stop_stream(state: State<AppState>) -> Result<(), String> {
     let mut capture = state.capture.blocking_lock();
     capture.stop();
     Ok(())
+}
+
+#[tauri::command]
+async fn list_outputs() -> Result<Vec<String>, String> {
+    let output = tokio::process::Command::new("hyprctl")
+        .arg("monitors")
+        .output()
+        .await
+        .map_err(|e| format!("Failed to run hyprctl: {e}"))?;
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let outputs: Vec<String> = stdout
+        .lines()
+        .filter_map(|line| {
+            line.strip_prefix("Monitor ")
+                .and_then(|rest| rest.split_whitespace().next())
+                .map(|name| name.to_string())
+        })
+        .collect();
+
+    Ok(outputs)
 }
 
 async fn run_stream_server(broadcaster: stream::FrameBroadcaster) {
@@ -338,6 +359,7 @@ fn main() {
             start_stream,
             stop_stream,
             get_stream_url,
+            list_outputs,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

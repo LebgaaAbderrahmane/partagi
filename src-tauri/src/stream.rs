@@ -21,7 +21,7 @@ impl ScreenCapture {
         }
     }
 
-    pub async fn start(&mut self, broadcaster: FrameBroadcaster) -> Result<(), String> {
+    pub async fn start(&mut self, broadcaster: FrameBroadcaster, output: Option<String>) -> Result<(), String> {
         if self.running.load(Ordering::Relaxed) {
             return Err("Already capturing".into());
         }
@@ -31,8 +31,14 @@ impl ScreenCapture {
 
         tokio::spawn(async move {
             while running.load(Ordering::Relaxed) {
+                let mut args = vec!["-c", "-t", "jpeg", "-q", "40", "-s", "0.75"];
+                if let Some(ref o) = output {
+                    args.extend(["-o", o]);
+                }
+                args.push("/tmp/partagi-capture.jpg");
+
                 let output = Command::new("grim")
-                    .args(["-c", "-t", "jpeg", "-q", "40", "-s", "0.75", "/tmp/partagi-capture.jpg"])
+                    .args(&args)
                     .output()
                     .await;
 
