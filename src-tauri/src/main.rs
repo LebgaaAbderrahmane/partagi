@@ -18,6 +18,7 @@ struct AppState {
     sessions: Mutex<HashMap<String, Session>>,
     broadcaster: stream::FrameBroadcaster,
     capture: Mutex<stream::ScreenCapture>,
+    mic: Mutex<stream::MicCapture>,
 }
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -247,6 +248,20 @@ fn stop_stream(state: State<AppState>) -> Result<(), String> {
 }
 
 #[tauri::command]
+async fn start_mic(state: State<'_, AppState>) -> Result<(), String> {
+    let mut mic = state.mic.lock().await;
+    let broadcaster = state.broadcaster.clone();
+    mic.start(broadcaster).await
+}
+
+#[tauri::command]
+fn stop_mic(state: State<AppState>) -> Result<(), String> {
+    let mut mic = state.mic.blocking_lock();
+    mic.stop();
+    Ok(())
+}
+
+#[tauri::command]
 async fn list_outputs() -> Result<Vec<String>, String> {
     let output = tokio::process::Command::new("hyprctl")
         .arg("monitors")
@@ -288,8 +303,19 @@ async fn run_stream_server(broadcaster: stream::FrameBroadcaster) {
                     tokio::select! {
                         frame = rx.recv() => {
                             match frame {
-                                Ok(data) => {
-                                    if ws_tx.send(tokio_tungstenite::tungstenite::Message::Binary(data.into())).await.is_err() {
+                                Ok(stream::StreamFrame::Video(data)) => {
+                                    let mut msg = Vec::with_capacity(1 + data.len());
+                                    msg.push(0x01);
+                                    msg.extend_from_slice(&data);
+                                    if ws_tx.send(tokio_tungstenite::tungstenite::Message::Binary(msg.into())).await.is_err() {
+                                        break;
+                                    }
+                                }
+                                Ok(stream::StreamFrame::Audio(data)) => {
+                                    let mut msg = Vec::with_capacity(1 + data.len());
+                                    msg.push(0x02);
+                                    msg.extend_from_slice(&data);
+                                    if ws_tx.send(tokio_tungstenite::tungstenite::Message::Binary(msg.into())).await.is_err() {
                                         break;
                                     }
                                 }
@@ -339,6 +365,7 @@ fn main() {
             sessions: Mutex::new(HashMap::new()),
             broadcaster,
             capture: Mutex::new(stream::ScreenCapture::new()),
+            mic: Mutex::new(stream::MicCapture::new()),
         })
         .setup(|_app| {
             tauri::async_runtime::spawn(run_stream_server(broadcaster_for_server));
@@ -358,6 +385,8 @@ fn main() {
             takeover_share,
             start_stream,
             stop_stream,
+            start_mic,
+            stop_mic,
             get_stream_url,
             list_outputs,
         ])
