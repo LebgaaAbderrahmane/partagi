@@ -13,7 +13,6 @@ export interface CreateSessionResponse {
 export interface JoinSessionResponse {
   code: string;
   stream_url: string;
-  session_url: string;
 }
 
 export interface RequestShareResponse {

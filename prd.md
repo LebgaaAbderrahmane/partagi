@@ -1,176 +1,140 @@
 Product Requirements Document
-Team Screen Share — Lightweight P2P Screen Sharing for Small Teams
+Partagi — Lightweight Screen Sharing for Small Teams
 
-Status: Draft v1 Owner: Abdou
-1. Summary
+Status: v1 (LAN-only) Owner: Abdou
 
-A lightweight desktop app that lets a small team (3–10 people) share their screen with each other in high resolution and low latency — without the overhead, compression artifacts, and lag of tools like Google Meet or Discord. Any participant can become the active screen-sharer during a session. After a session ends, an AI-generated summary and action-item list is produced automatically from the conversation.
+## 1. Summary
 
-The product is not a general-purpose video conferencing tool. It intentionally excludes webcam and chat to keep the experience fast, simple, and focused on one thing: showing your screen to your team, clearly, with everyone able to talk over it.
-2. Problem Statement
+A lightweight desktop app that lets a small team (3-10 people) share their screen with each other in high resolution and low latency — without the overhead, compression artifacts, and lag of tools like Google Meet or Discord. Any participant can become the active screen-sharer during a session.
+
+**v1 scope: LAN-only.** All participants must be on the same local network (office WiFi, co-working space). Remote/team-member support is a planned future phase.
+
+## 2. Problem Statement
 
 Existing tools (Google Meet, Discord, Zoom) route media through general-purpose infrastructure optimized for massive scale, which means:
 
-    Screen share resolution and frame rate are aggressively compressed to save server bandwidth and cost
-    Latency is added by multi-hop relay/transcoding pipelines
-    The tools are heavier than needed for a 3–10 person dev/work team that just wants to show something on screen and talk about it
-    Meeting takeaways (decisions, action items) are not captured — teams rely on manual notes or memory afterward
+- Screen share resolution and frame rate are aggressively compressed
+- Latency is added by multi-hop relay/transcoding pipelines
+- The tools are heavier than needed for a small team that just wants to show their screen
 
-Small teams (e.g., dev teams, freelancers, small startups) need a fast, high-quality, low-friction way to show their screen to teammates and walk away from the session with a clear record of what was decided.
-3. Goals
+## 3. Goals
 
-    Enable one-to-many screen sharing within a small team (3–10 participants) at high resolution with minimal, near real-time latency
-    Allow any participant to become the active sharer during a session (roles are not fixed)
-    Support live mic audio for all participants during a session
-    Automatically generate a written meeting summary and action-item list after each session, using AI
-    Keep the app lightweight, fast to join (link or code), and free of unnecessary features (no chat, no webcam in v1)
+- Enable one-to-many screen sharing within a small team (3-10 participants) at high resolution with minimal latency
+- Allow any participant to become the active sharer during a session
+- Keep the app lightweight, fast to join (code), and free of unnecessary features
+- **v1: LAN-only** — all participants on the same network
 
-Non-Goals (v1)
+### Non-Goals (v1)
 
-    Large-scale broadcasting (100+ viewers)
-    Webcam video
-    In-app text chat
-    Screen or session recording/playback (beyond what's needed to generate the AI summary — see §7.4 for data handling)
-    Mobile clients (desktop-first for v1)
+- Remote/cross-network sharing (requires STUN/TURN relay — planned for v2)
+- Large-scale broadcasting (100+ viewers)
+- Webcam video
+- In-app text chat
+- Screen recording
+- Mobile clients as sharers (mobile viewers supported via web viewer)
 
-4. Target Users
+## 4. Target Users
 
-    Small software development teams (3–10 people) doing code reviews, pair debugging, or design walkthroughs
-    Small startup/agency teams needing quick internal screen shares without spinning up a heavier meeting tool
-    Freelancers/consultants sharing progress with a small client team
+- Small software development teams (3-10 people) doing code reviews, pair debugging, or design walkthroughs
+- Small startup/agency teams needing quick internal screen shares
+- Freelancers/consultants sharing progress with a small client team
 
-5. Core Features (v1)
-5.1 Session / Room Management
+## 5. Core Features (v1)
 
-    A participant creates a session and receives a shareable link or room code
-    Teammates join via the link/code, using the same desktop app
-    Sessions are ephemeral — no persistent team workspace concept required for v1
+### 5.1 Session / Room Management
 
-5.2 Screen Sharing (symmetric roles)
+- A participant creates a session and receives a room code
+- Teammates join via the code using the same desktop app
+- Sessions are ephemeral — no persistent workspace required
+- User can set display name with "Remember me" option
 
-    Any participant can click Share Screen to become the active sharer
-    Only one active screen share at a time per session
-    Handoff UX: if a participant wants to share while someone else already is, the app sends a request prompt to the current sharer (X wants to share — hand over?). The current sharer can approve, or the takeover proceeds automatically after a short timeout if there's no response. This avoids both accidental interruptions and the forgot to stop sharing problem.
-    Target quality: 1080p, 30–60fps, tuned for low latency over raw compression ratio
+### 5.2 Screen Sharing
 
-5.3 Mic Audio
+- Any participant can click "Share Screen" to become the active sharer
+- Only one active screen share at a time per session
+- ~30fps via native Wayland capture (grim) over WebSocket
+- Cursor included in capture
+- Handoff request/approve flow between participants
 
-    All participants' microphones are live by default (voice-call style) so anyone can talk while someone else shares
-    Self-mute: each participant can mute/unmute themselves at any time via a mic toggle (Google Meet-style) — mute state is local and always under the participant's own control
-    AI-based noise suppression applied client-side before publishing (quality-of-life item, can ship v1 or fast-follow)
+### 5.3 Mobile Viewing
 
-5.4 AI Meeting Summary & Action Items
+- Standalone web viewer served on port 9002
+- Any device on the same LAN can view via browser (phone, tablet, laptop)
+- Fullscreen support, auto-reconnect, responsive layout
+- No app install required for viewers
 
-    During the session, audio from all participants is transcribed (speech-to-text)
-    When the session ends, the transcript is passed to an LLM to generate:
-        A short written summary of what was discussed
-        A list of extracted action items (what was decided needs to be done, and by whom if stated)
-    The summary is shown in-app at session end and can be exported/copied (e.g., to paste into Slack, Notion, etc.)
-    Only the transcript (text) is retained for this purpose — no video/audio recording is stored (see §7.4)
+### 5.4 Mic Audio (planned, not yet implemented)
 
-6. User Flows
-6.1 Starting a Session
+- All participants' microphones live by default (voice-call style)
+- Self-mute toggle
+- AI-based noise suppression
 
-    User opens the app → clicks New Session
-    App creates a room and displays a shareable link/code
-    User shares the link with teammates (via Slack, WhatsApp, etc. — outside the app)
+### 5.5 AI Meeting Summary (planned, not yet implemented)
 
-6.2 Joining a Session
+- Audio transcribed during session (speech-to-text)
+- On session end, transcript sent to LLM for summary + action items
+- Summary shown in-app and exportable
 
-    Teammate opens the app → enters the code or clicks the link
-    App connects them to the room; they see a waiting/connected state with participant list
+## 6. Technical Architecture
 
-6.3 Sharing a Screen
+### 6.1 Client
 
-    Any participant clicks Share Screen
-    OS-level picker appears (select monitor/window)
-    Stream publishes to the room; all other participants automatically see it
-    Sharer clicks Stop Sharing to end, freeing the slot for another participant
+- Framework: Tauri 2 (Rust core + React web UI)
+- Platform: Linux (Wayland) for v1 — macOS/Windows planned later
 
-6.4 Ending a Session & Getting the Summary
+### 6.2 Screen Capture
 
-    Last participant leaves or explicitly ends the session
-    App finalizes the transcript and sends it for summarization
-    Summary + action items are displayed in-app within a short processing delay
-    User can copy/export the result
+- Tool: grim (Wayland-native screenshot tool)
+- Format: JPEG, quality 40, 75% resolution scale
+- Rate: ~30fps (capture as fast as grim allows, no artificial delay)
+- Cursor included via grim -c flag
 
-7. Technical Approach
-7.1 Client
+### 6.3 Streaming Transport
 
-    Framework: Tauri (Rust core + web-based UI) — lighter than Electron, good native access for screen capture and hardware-accelerated encoding
-    Platforms: Windows and macOS for v1 (Linux as stretch goal)
+- WebSocket server (port 9001) — binary JPEG frames broadcast to all viewers
+- tokio broadcast channel for fan-out to multiple viewers
+- HTTP server (port 9002) — serves standalone viewer page via axum
+- All servers bind to 0.0.0.0 for LAN access
+- LAN IP auto-detected via UDP socket trick
 
-7.2 Media Transport
+### 6.4 Architecture Diagram
 
-    Protocol: WebRTC for real-time audio/video
-    SFU: Self-hosted LiveKit — forwards (does not transcode) the active screen share and all mic audio tracks to participants, keeping the sharer's upload bandwidth flat regardless of team size
-    Dynamic track publish/unpublish used to support the any participant can share requirement (switching the active video track when sharing changes hands)
+```
+Desktop App (Sharer)
+  grim --JPEG--> broadcast channel --> WebSocket server (:9001) --> all viewers
+  Axum HTTP server (:9002) --> serves viewer.html
 
-7.3 Signaling & Session Management
+Viewer (Phone/Laptop)
+  Browser opens http://<host-ip>:9002 --> connects to WS --> canvas rendering
+```
 
-    A lightweight backend service issues LiveKit join tokens and manages room codes/links
-    No persistent state beyond the life of a session is required for v1
+### 6.5 Bandwidth Notes
 
-7.4 AI Summary Pipeline
+- ~81KB/frame at 30fps = ~2.4MB/s per viewer
+- 5 viewers on WiFi = ~12MB/s upload — acceptable for modern APs
+- Adaptive quality planned for v2 if needed
 
-    Speech-to-text: real-time or near-real-time transcription of each participant's mic track (e.g., via a local model such as faster-whisper, or a cloud STT API)
-    Transcript assembled per-session with speaker attribution
-    On session end, transcript sent to an LLM with a summarization + action-item extraction prompt
-    Data handling: only text transcripts are persisted for summarization; screen/audio media itself is not recorded or stored, to limit privacy exposure of shared screens
+## 7. Roadmap
 
-7.5 Architecture Diagram (conceptual)
+### Completed
 
-[Participant PC] ─┐
-[Participant PC] ─┼── WebRTC ── LiveKit SFU (self-hosted) ── WebRTC ──┐
-[Participant PC] ─┘                                                    └─ back to all peers
-        │                                    │
-        │ mic audio tracks                   │ transcript at session end
-        ▼                                    ▼
-  STT pipeline  ───────────────────────►  LLM summarizer ──► Summary + action items shown in-app
+- Phase 1: Core plumbing (session management, Tauri setup)
+- Phase 2: Media (LiveKit-based, later replaced)
+- Phase 3: Pivot to grim + WebSocket streaming
+- Phase 4: Polish (dark theme, user ID, web viewer, FPS optimization, LAN access)
 
-8. Success Metrics
+### Next
 
-    Latency: end-to-end screen share glass-to-glass latency under a defined target (e.g., <150ms) at 1080p
-    Reliability: session join success rate, connection drop rate during active sessions
-    Adoption within target teams: sessions per week, average participants per session
-    AI summary usefulness: qualitative feedback on whether generated summaries are accurate/useful (e.g., simple thumbs up/down in-app)
+- Cleanup: remove dead code, update docs
+- Multi-monitor support (select display to capture)
+- Share handoff UX (request/approve flow)
+- Mic audio over WebSocket
+- Platform support (macOS, Windows capture backends)
+- Package as .deb / AppImage
 
-9. Risks & Open Questions
-Risk / Question Notes
-NAT traversal failures Some networks (corporate firewalls, symmetric NAT) will require TURN relay fallback — adds cost/complexity but necessary for reliability
-Self-hosted SFU operational cost/complexity Needs a VPS and basic ops; acceptable for v1 scale (3–10 person rooms)
-Sharing handoff UX Resolved: request/approve flow with timeout fallback (see §5.2)
-Mic-always-on vs. push-to-talk Resolved: always-on with self-mute, Google Meet-style (see §5.3)
-Transcription accuracy for mixed-language teams (e.g., Arabic/French/English) May affect summary quality; worth testing STT model performance on target languages early
-Privacy of shared screen content No screen recording planned, but worth an explicit in-app disclosure of what is/isn't captured (transcript only)
-10. Roadmap (indicative)
+### Future (post-v1)
 
-Phase 1 — Core plumbing
-
-    LiveKit self-hosted + token backend
-    Tauri app: join a room, connect, see participant presence (no media)
-
-Phase 2 — Media
-
-    Mic publish/subscribe
-    Screen capture + publish, single hardcoded sharer (proof of concept)
-    Any-participant sharing + handoff logic
-
-Phase 3 — AI Summary
-
-    STT pipeline wired to mic tracks
-    Session-end transcript → LLM summary + action items
-    In-app display + export/copy
-
-Phase 4 — Polish
-
-    Noise suppression
-    UI/UX refinement, room link flow
-    Hardware encoder tuning for quality
-
-Future (post-v1) — see backlog
-
-    Real-time translation of captions
-    Session recap search (long-term knowledge base over past sessions)
-    Screen content intelligence (AI reading what's on screen)
-
+- Remote/cross-network support (STUN/TURN relay)
+- AI meeting summary (STT + LLM)
+- Real-time translation
+- Session recap search
