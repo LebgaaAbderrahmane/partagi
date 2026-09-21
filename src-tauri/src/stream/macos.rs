@@ -2,6 +2,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::io::Cursor;
 
+use cpal::traits::HostTrait;
 use super::common::{FrameBroadcaster, StreamFrame};
 
 pub struct ScreenCapture {
@@ -29,14 +30,16 @@ impl ScreenCapture {
                 interval.tick().await;
                 let monitors = xcap::Monitor::all().unwrap_or_default();
                 let monitor = if let Some(ref name) = output {
-                    monitors.iter().find(|m| m.name() == name).cloned()
+                    monitors.iter().find(|m| {
+                        m.name().map(|n| n == name.as_str()).unwrap_or(false)
+                    }).cloned()
                 } else {
                     monitors.into_iter().next()
                 };
                 if let Some(monitor) = monitor {
                     if let Ok(image) = monitor.capture_image() {
                         let mut buf = Cursor::new(Vec::new());
-                        if image.write_to(&mut buf, image::ImageOutputFormat::Jpeg).is_ok() {
+                        if image.write_to(&mut buf, image::ImageFormat::Jpeg).is_ok() {
                             let _ = broadcaster.send(StreamFrame::Video(buf.into_inner()));
                         }
                     }
@@ -163,6 +166,6 @@ pub fn list_outputs_sync() -> Vec<String> {
     xcap::Monitor::all()
         .unwrap_or_default()
         .into_iter()
-        .map(|m| m.name().to_string())
+        .filter_map(|m| m.name().ok())
         .collect()
 }
