@@ -262,24 +262,8 @@ fn stop_mic(state: State<AppState>) -> Result<(), String> {
 }
 
 #[tauri::command]
-async fn list_outputs() -> Result<Vec<String>, String> {
-    let output = tokio::process::Command::new("hyprctl")
-        .arg("monitors")
-        .output()
-        .await
-        .map_err(|e| format!("Failed to run hyprctl: {e}"))?;
-
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    let outputs: Vec<String> = stdout
-        .lines()
-        .filter_map(|line| {
-            line.strip_prefix("Monitor ")
-                .and_then(|rest| rest.split_whitespace().next())
-                .map(|name| name.to_string())
-        })
-        .collect();
-
-    Ok(outputs)
+fn list_outputs() -> Vec<String> {
+    stream::list_outputs_sync()
 }
 
 async fn run_stream_server(broadcaster: stream::FrameBroadcaster) {

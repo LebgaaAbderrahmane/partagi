@@ -1,21 +1,9 @@
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use tokio::io::AsyncReadExt;
-use tokio::sync::broadcast;
 use tokio::process::Command;
 
-#[derive(Clone, Debug)]
-pub enum StreamFrame {
-    Video(Vec<u8>),
-    Audio(Vec<u8>),
-}
-
-pub type FrameBroadcaster = broadcast::Sender<StreamFrame>;
-
-pub fn create_broadcaster() -> FrameBroadcaster {
-    let (tx, _) = broadcast::channel(8);
-    tx
-}
+use super::common::{FrameBroadcaster, StreamFrame};
 
 pub struct ScreenCapture {
     running: Arc<AtomicBool>,
@@ -141,4 +129,29 @@ impl Drop for MicCapture {
     fn drop(&mut self) {
         self.stop();
     }
+}
+
+pub fn list_outputs_sync() -> Vec<String> {
+    std::process::Command::new("hyprctl")
+        .arg("monitors")
+        .output()
+        .ok()
+        .and_then(|o| {
+            if o.status.success() {
+                let stdout = String::from_utf8_lossy(&o.stdout);
+                Some(
+                    stdout
+                        .lines()
+                        .filter_map(|line| {
+                            line.strip_prefix("Monitor ")
+                                .and_then(|rest| rest.split_whitespace().next())
+                                .map(|name| name.to_string())
+                        })
+                        .collect(),
+                )
+            } else {
+                None
+            }
+        })
+        .unwrap_or_default()
 }
