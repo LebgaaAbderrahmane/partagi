@@ -1,7 +1,7 @@
 {
   "name": "partagi",
-  "version": "1.0.0",
-  "description": "Lightweight P2P screen sharing for small teams",
+  "version": "0.1.0",
+  "description": "Lightweight LAN screen sharing for small teams",
   "private": true,
   "scripts": {
     "dev": "vite",
@@ -11,7 +11,7 @@
   },
   "keywords": [],
   "author": "",
-  "license": "ISC",
+  "license": "MIT",
   "devEngines": {
     "packageManager": {
       "name": "pnpm",
