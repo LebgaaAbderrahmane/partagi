@@ -128,11 +128,13 @@ Viewer (Phone/Laptop)
 - Multi-monitor support (select display to capture)
 - Share handoff (takeover sharing)
 - Mic audio over WebSocket
+- Platform support (macOS + Windows backends via xcap + cpal)
+- .deb packaging for Linux
 
 ### Next
 
-- Package as .deb / AppImage
-- Platform support (macOS, Windows capture backends)
+- AppImage packaging (requires linuxdeploy)
+- .dmg / .msi / .nsis installers for macOS/Windows
 
 ### Future (post-v1)
 
