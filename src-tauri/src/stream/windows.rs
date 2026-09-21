@@ -2,7 +2,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::io::Cursor;
 
-use cpal::traits::HostTrait;
+use cpal::traits::{HostTrait, DeviceTrait};
 use super::common::{FrameBroadcaster, StreamFrame};
 
 pub struct ScreenCapture {
@@ -87,7 +87,7 @@ impl MicCapture {
             let host = cpal::default_host();
             let device = match host.default_input_device() {
                 Some(d) => d,
-                Err(_) => {
+                None => {
                     let _ = err_tx.send("No input device found".into());
                     return;
                 }
