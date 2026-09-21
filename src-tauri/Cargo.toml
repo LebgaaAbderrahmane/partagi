@@ -18,3 +18,8 @@ tokio = { version = "1", features = ["full"] }
 tokio-tungstenite = "0.26"
 futures-util = { version = "0.3.34", features = ["sink"] }
 axum = "0.8.9"
+
+[target.'cfg(any(target_os = "macos", target_os = "windows"))'.dependencies]
+xcap = "0.9"
+cpal = "0.18"
+image = { version = "0.25", default-features = false, features = ["jpeg"] }
