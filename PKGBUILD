@@ -29,12 +29,13 @@ sha256sums=('SKIP')
 
 prepare() {
   cd "$pkgname-$pkgver"
-  npm install
+  corepack enable
+  pnpm install
 }
 
 build() {
   cd "$pkgname-$pkgver"
-  npx tauri build
+  pnpm tauri build
 }
 
 package() {
