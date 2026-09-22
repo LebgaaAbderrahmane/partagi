@@ -22,7 +22,8 @@ jobs:
             libappindicator3-dev \
             librsvg2-dev \
             patchelf \
-            dpkg
+            dpkg \
+            rpm
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -52,7 +53,7 @@ jobs:
         run: cargo check
         working-directory: src-tauri
 
-      - name: Build .deb
+      - name: Build bundles
         run: pnpm tauri build
 
       - name: Upload .deb artifact
@@ -61,3 +62,10 @@ jobs:
           name: partagi-linux-amd64
           path: src-tauri/target/release/bundle/deb/*.deb
           if-no-files-found: error
+
+      - name: Upload .rpm artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: partagi-linux-x86_64-rpm
+          path: src-tauri/target/release/bundle/rpm/*.rpm
+          if-no-files-found: warn
