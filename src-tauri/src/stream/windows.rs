@@ -133,7 +133,7 @@ impl MicCapture {
             return Err(err);
         }
 
-        let running_clone = running.clone();
+        let running_clone = self.running.clone();
         tokio::spawn(async move {
             while running_clone.load(Ordering::Relaxed) {
                 if let Some(samples) = rx.recv().await {
