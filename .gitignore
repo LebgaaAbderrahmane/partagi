@@ -5,6 +5,10 @@ node_modules/
 dist/
 target/
 
+# makepkg artifacts
+src/
+*.tar.gz
+
 # IDE
 .vscode/
 .idea/
