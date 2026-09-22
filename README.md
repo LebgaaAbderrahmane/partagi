@@ -20,7 +20,23 @@ Existing tools (Meet, Discord, Zoom) compress aggressively and add latency throu
 
 ## Installation
 
-### Linux (.deb)
+### Arch Linux (makepkg)
+
+```bash
+git clone https://github.com/LebgaaAbderrahmane/partagi.git
+cd partagi
+makepkg -si
+```
+
+### Fedora (.rpm)
+
+Download `Partagi_0.1.0-1.x86_64.rpm` from [Releases](https://github.com/LebgaaAbderrahmane/partagi/releases) then:
+
+```bash
+sudo rpm -i Partagi_0.1.0-1.x86_64.rpm
+```
+
+### Debian / Ubuntu (.deb)
 
 Download `Partagi_0.1.0_amd64.deb` from [Releases](https://github.com/LebgaaAbderrahmane/partagi/releases) then:
 
@@ -28,24 +44,31 @@ Download `Partagi_0.1.0_amd64.deb` from [Releases](https://github.com/LebgaaAbde
 sudo dpkg -i Partagi_0.1.0_amd64.deb
 ```
 
-Runtime dependencies (usually pre-installed):
-- `libwebkit2gtk-4.1-0`
-- `libgtk-3-0`
-- `ffmpeg` (for mic audio)
-- `grim` (for screen capture on Wayland)
+### macOS
 
-### macOS / Windows
+Download `Partagi_0.1.0_aarch64.dmg` from [Releases](https://github.com/LebgaaAbderrahmane/partagi/releases), open the .dmg, and drag Partagi to Applications.
 
-Build from source (installers coming soon).
+### Windows
+
+Download `Partagi_0.1.0_x64-setup.exe` from [Releases](https://github.com/LebgaaAbderrahmane/partagi/releases) and run the installer.
+
+### Runtime dependencies (Linux)
+
+- `libwebkit2gtk-4.1-0` / `webkit2gtk-4.1`
+- `gtk3`
+- `ffmpeg` (mic audio)
+- `grim` (Wayland screen capture)
 
 ## Build from Source
 
 ### Prerequisites
 
 - [Rust](https://rustup.rs/)
-- [Node.js](https://nodejs.org/) >= 18
+- [Node.js](https://nodejs.org/) >= 22
 - [pnpm](https://pnpm.io/)
-- Linux only: `grim`, `ffmpeg`, `libwebkit2gtk-4.1-dev`
+- Linux: `grim`, `ffmpeg`, `libwebkit2gtk-4.1-dev`, `libgtk-3-dev`
+- macOS: Xcode Command Line Tools
+- Windows: WebView2, Visual Studio Build Tools
 
 ### Setup
 
@@ -67,7 +90,7 @@ pnpm tauri dev
 pnpm tauri build
 ```
 
-Output: `src-tauri/target/release/bundle/deb/Partagi_0.1.0_amd64.deb`
+Output: `src-tauri/target/release/bundle/` contains `.deb`, `.rpm`, `.dmg`, `.msi`, or `.exe` depending on platform.
 
 ## Usage
 
