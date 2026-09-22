@@ -2,7 +2,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::io::Cursor;
 
-use cpal::traits::{HostTrait, DeviceTrait};
+use cpal::traits::{HostTrait, DeviceTrait, StreamTrait};
 use super::common::{FrameBroadcaster, StreamFrame};
 
 pub struct ScreenCapture {
@@ -101,8 +101,9 @@ impl MicCapture {
             };
             let channels = config.channels() as usize;
 
+            let stream_config = config.config();
             let stream = match device.build_input_stream(
-                &config.into(),
+                stream_config,
                 move |data: &[f32], _: &cpal::InputCallbackInfo| {
                     let mono: Vec<f32> = data
                         .chunks(channels)
