@@ -17,6 +17,7 @@ pkgbase = partagi
 	makedepends = cargo
 	makedepends = nodejs
 	makedepends = npm
+	makedepends = corepack
 	makedepends = base-devel
 	makedepends = clang
 	makedepends = pkg-config

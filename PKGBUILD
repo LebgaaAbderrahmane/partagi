@@ -20,6 +20,7 @@ makedepends=(
   'cargo'
   'nodejs'
   'npm'
+  'corepack'
   'base-devel'
   'clang'
   'pkg-config'
