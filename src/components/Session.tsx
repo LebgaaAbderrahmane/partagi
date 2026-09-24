@@ -1,4 +1,5 @@
 import { useEffect, useState, useRef, useCallback } from "react";
+import { QRCodeSVG } from "qrcode.react";
 import {
   leaveSession,
   startStream,
@@ -9,6 +10,7 @@ import {
   getParticipants,
   getActiveSharer,
   getPendingShareRequest,
+  getViewerCount,
   requestScreenShare,
   approveShareRequest,
   rejectShareRequest,
@@ -49,6 +51,8 @@ export default function Session({
   const [pendingRequest, setPendingRequest] = useState<string | null>(null);
   const [waitingApproval, setWaitingApproval] = useState(false);
   const [audioUnlocked, setAudioUnlocked] = useState(false);
+  const [viewerCount, setViewerCount] = useState(0);
+  const [showQr, setShowQr] = useState(false);
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const wsRef = useRef<WebSocket | null>(null);
@@ -140,14 +144,16 @@ export default function Session({
   useEffect(() => {
     pollRef.current = setInterval(async () => {
       try {
-        const [p, sharer, pending] = await Promise.all([
+        const [p, sharer, pending, viewers] = await Promise.all([
           getParticipants(roomCode),
           getActiveSharer(roomCode),
           getPendingShareRequest(roomCode),
+          getViewerCount(),
         ]);
         setParticipants(p);
         setActiveSharer(sharer);
         setPendingRequest(pending);
+        setViewerCount(viewers);
 
         if (waitingApproval && sharer === participantId) {
           setWaitingApproval(false);
@@ -328,6 +334,22 @@ export default function Session({
             <button onClick={copyViewerUrl} style={{ padding: "0.25rem 0.5rem", fontSize: "0.75rem" }}>
               {viewerCopied ? "Copied" : "Copy Link"}
             </button>
+            <button onClick={() => setShowQr(true)} style={{ padding: "0.25rem 0.5rem", fontSize: "0.75rem" }}>
+              QR
+            </button>
+          </div>
+          <div style={{
+            display: "flex",
+            alignItems: "center",
+            gap: "0.35rem",
+            fontSize: "0.75rem",
+            color: "var(--text-muted)",
+            background: "var(--bg)",
+            padding: "0.2rem 0.6rem",
+            borderRadius: 12,
+          }}>
+            <span style={{ fontSize: "0.85rem" }}>👁</span>
+            {viewerCount} watching
           </div>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
@@ -477,6 +499,41 @@ export default function Session({
             >
               Tap to hear audio
             </button>
+          )}
+          {showQr && (
+            <div
+              style={{
+                position: "fixed",
+                inset: 0,
+                background: "rgba(0,0,0,0.7)",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                zIndex: 200,
+              }}
+              onClick={() => setShowQr(false)}
+            >
+              <div
+                style={{
+                  background: "var(--surface)",
+                  border: "1px solid var(--border)",
+                  borderRadius: "var(--radius-lg)",
+                  padding: "2rem",
+                  display: "flex",
+                  flexDirection: "column",
+                  alignItems: "center",
+                  gap: "1rem",
+                }}
+                onClick={(e) => e.stopPropagation()}
+              >
+                <p style={{ fontSize: "0.9rem", fontWeight: 600 }}>Scan to view on mobile</p>
+                <div style={{ background: "white", padding: "1rem", borderRadius: "var(--radius)" }}>
+                  <QRCodeSVG value={viewerUrl} size={200} />
+                </div>
+                <code style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>{viewerUrl}</code>
+                <button onClick={() => setShowQr(false)}>Close</button>
+              </div>
+            </div>
           )}
           {showMonitorPicker && (
             <div style={{
