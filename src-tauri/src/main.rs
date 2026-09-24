@@ -277,10 +277,16 @@ fn takeover_share(state: State<AppState>, code: String, participant_id: String) 
 }
 
 #[tauri::command]
-async fn start_stream(state: State<'_, AppState>, output: Option<String>) -> Result<(), String> {
+async fn start_stream(
+    state: State<'_, AppState>,
+    output: Option<String>,
+    quality: Option<stream::Quality>,
+) -> Result<(), String> {
     let mut capture = state.capture.lock().await;
     let broadcaster = state.broadcaster.clone();
-    capture.start(broadcaster, output).await
+    capture
+        .start(broadcaster, output, quality.unwrap_or_default())
+        .await
 }
 
 #[tauri::command]

@@ -3,7 +3,7 @@ use std::sync::Arc;
 use std::io::Cursor;
 
 use cpal::traits::{HostTrait, DeviceTrait, StreamTrait};
-use super::common::{FrameBroadcaster, StreamFrame};
+use super::common::{FrameBroadcaster, Quality, StreamFrame};
 
 pub struct ScreenCapture {
     running: Arc<AtomicBool>,
@@ -16,7 +16,12 @@ impl ScreenCapture {
         }
     }
 
-    pub async fn start(&mut self, broadcaster: FrameBroadcaster, output: Option<String>) -> Result<(), String> {
+    pub async fn start(
+        &mut self,
+        broadcaster: FrameBroadcaster,
+        output: Option<String>,
+        quality: Quality,
+    ) -> Result<(), String> {
         if self.running.load(Ordering::Relaxed) {
             return Err("Already capturing".into());
         }
@@ -24,8 +29,12 @@ impl ScreenCapture {
         self.running.store(true, Ordering::Relaxed);
         let running = self.running.clone();
 
+        let scale = quality.scale();
+        let jpeg_q = quality.jpeg_quality();
+        let interval_ms = quality.frame_interval_ms();
+
         tokio::spawn(async move {
-            let mut interval = tokio::time::interval(std::time::Duration::from_millis(33));
+            let mut interval = tokio::time::interval(std::time::Duration::from_millis(interval_ms));
             while running.load(Ordering::Relaxed) {
                 interval.tick().await;
                 let monitors = xcap::Monitor::all().unwrap_or_default();
@@ -38,8 +47,17 @@ impl ScreenCapture {
                 };
                 if let Some(monitor) = monitor {
                     if let Ok(image) = monitor.capture_image() {
+                        let resized = if scale < 1.0 {
+                            let w = (image.width() as f32 * scale) as u32;
+                            let h = (image.height() as f32 * scale) as u32;
+                            image.resize(w, h, image::imageops::FilterType::Triangle)
+                        } else {
+                            image
+                        };
                         let mut buf = Cursor::new(Vec::new());
-                        if image.write_to(&mut buf, image::ImageFormat::Jpeg).is_ok() {
+                        let mut encoder =
+                            image::codecs::jpeg::JpegEncoder::new_with_quality(&mut buf, jpeg_q);
+                        if encoder.encode_image(&resized).is_ok() {
                             let _ = broadcaster.send(StreamFrame::Video(buf.into_inner()));
                         }
                     }

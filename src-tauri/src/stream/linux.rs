@@ -3,7 +3,7 @@ use std::sync::Arc;
 use tokio::io::AsyncReadExt;
 use tokio::process::Command;
 
-use super::common::{FrameBroadcaster, StreamFrame};
+use super::common::{FrameBroadcaster, Quality, StreamFrame};
 
 pub struct ScreenCapture {
     running: Arc<AtomicBool>,
@@ -16,7 +16,12 @@ impl ScreenCapture {
         }
     }
 
-    pub async fn start(&mut self, broadcaster: FrameBroadcaster, output: Option<String>) -> Result<(), String> {
+    pub async fn start(
+        &mut self,
+        broadcaster: FrameBroadcaster,
+        output: Option<String>,
+        quality: Quality,
+    ) -> Result<(), String> {
         if self.running.load(Ordering::Relaxed) {
             return Err("Already capturing".into());
         }
@@ -24,18 +29,35 @@ impl ScreenCapture {
         self.running.store(true, Ordering::Relaxed);
         let running = self.running.clone();
 
+        let scale = quality.scale();
+        let jpeg_q = quality.jpeg_quality();
+        let interval_ms = quality.frame_interval_ms();
+
         tokio::spawn(async move {
+            let mut interval = tokio::time::interval(std::time::Duration::from_millis(interval_ms));
             while running.load(Ordering::Relaxed) {
-                let mut args = vec!["-c", "-t", "jpeg", "-q", "40", "-s", "0.75"];
+                interval.tick().await;
+                if !running.load(Ordering::Relaxed) {
+                    break;
+                }
+
+                let jpeg_q_str = jpeg_q.to_string();
+                let scale_str = scale.to_string();
+                let mut args = vec![
+                    "-c",
+                    "-t",
+                    "jpeg",
+                    "-q",
+                    &jpeg_q_str,
+                    "-s",
+                    &scale_str,
+                ];
                 if let Some(ref o) = output {
                     args.extend(["-o", o]);
                 }
                 args.push("/tmp/partagi-capture.jpg");
 
-                let output = Command::new("grim")
-                    .args(&args)
-                    .output()
-                    .await;
+                let output = Command::new("grim").args(&args).output().await;
 
                 match output {
                     Ok(o) if o.status.success() => {

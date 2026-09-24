@@ -100,3 +100,24 @@ code {
   border-radius: 4px;
   font-size: 0.85em;
 }
+
+select {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text);
+  padding: 0.35rem 0.5rem;
+  font-size: 0.85rem;
+  outline: none;
+  cursor: pointer;
+  transition: border-color 0.15s;
+}
+
+select:focus {
+  border-color: var(--accent);
+}
+
+select option {
+  background: var(--surface);
+  color: var(--text);
+}
