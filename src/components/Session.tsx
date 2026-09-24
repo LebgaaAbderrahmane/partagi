@@ -34,6 +34,7 @@ import {
   type Quality,
 } from "../lib/tauri-commands";
 import { Button, Modal, Avatar, Badge, useToast } from "./ui";
+import { viewerUrlFromStream } from "../lib/urls";
 
 interface SessionProps {
   roomCode: string;
@@ -56,11 +57,7 @@ export default function Session({
   const [isMicOn, setIsMicOn] = useState(false);
   const [copied, setCopied] = useState(false);
   const [viewerCopied, setViewerCopied] = useState(false);
-  const streamHost = streamUrl
-    .replace(/^wss?:\/\//, "")
-    .split("?")[0]
-    .replace(/:\d+$/, "");
-  const viewerUrl = `http://${streamHost}:9002/?room=${encodeURIComponent(roomCode)}`;
+  const viewerUrl = viewerUrlFromStream(streamUrl, roomCode);
 
   const [outputs, setOutputs] = useState<string[]>([]);
   const [selectedOutput, setSelectedOutput] = useState<string>("");

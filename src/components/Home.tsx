@@ -6,6 +6,7 @@ import {
   type NetworkInfo,
   type NetworkMode,
 } from "../lib/tauri-commands";
+import { loadRecent, saveRecent } from "../lib/recent-sessions";
 import { Button } from "./ui";
 import { History, Globe, Wifi, ExternalLink } from "lucide-react";
 
@@ -19,24 +20,6 @@ interface HomeProps {
 
 const STORAGE_KEY = "partagi-participant-id";
 const NAME_KEY = "partagi-display-name";
-const RECENT_KEY = "partagi-recent-sessions";
-
-function loadRecent(): string[] {
-  try {
-    const raw = localStorage.getItem(RECENT_KEY);
-    if (!raw) return [];
-    const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed.filter((c) => typeof c === "string") : [];
-  } catch {
-    return [];
-  }
-}
-
-function saveRecent(code: string) {
-  const codeUpper = code.toUpperCase();
-  const next = [codeUpper, ...loadRecent().filter((c) => c !== codeUpper)].slice(0, 5);
-  localStorage.setItem(RECENT_KEY, JSON.stringify(next));
-}
 
 export default function Home({ onJoinSession }: HomeProps) {
   const [displayName, setDisplayName] = useState(

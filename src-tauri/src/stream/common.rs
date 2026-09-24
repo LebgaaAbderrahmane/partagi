@@ -47,3 +47,46 @@ pub fn create_broadcaster() -> FrameBroadcaster {
     let (tx, _) = broadcast::channel(8);
     tx
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn quality_defaults_to_balanced() {
+        assert_eq!(Quality::default(), Quality::Balanced);
+    }
+
+    #[test]
+    fn quality_scale_table() {
+        assert_eq!(Quality::Low.scale(), 0.5);
+        assert_eq!(Quality::Balanced.scale(), 0.75);
+        assert_eq!(Quality::High.scale(), 1.0);
+    }
+
+    #[test]
+    fn quality_jpeg_table() {
+        assert_eq!(Quality::Low.jpeg_quality(), 25);
+        assert_eq!(Quality::Balanced.jpeg_quality(), 40);
+        assert_eq!(Quality::High.jpeg_quality(), 60);
+    }
+
+    #[test]
+    fn quality_interval_table() {
+        assert_eq!(Quality::Low.frame_interval_ms(), 100);
+        assert_eq!(Quality::Balanced.frame_interval_ms(), 50);
+        assert_eq!(Quality::High.frame_interval_ms(), 33);
+    }
+
+    #[tokio::test]
+    async fn broadcaster_fans_out_to_subscriber() {
+        let tx = create_broadcaster();
+        let mut rx = tx.subscribe();
+        tx.send(StreamFrame::Video(vec![1, 2, 3])).unwrap();
+        let frame = rx.recv().await.unwrap();
+        match frame {
+            StreamFrame::Video(data) => assert_eq!(data, vec![1, 2, 3]),
+            _ => panic!("expected video frame"),
+        }
+    }
+}

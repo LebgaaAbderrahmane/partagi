@@ -728,3 +728,109 @@ fn main() {
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn sample_session(ids: &[&str]) -> Session {
+        Session {
+            code: "TESTCODE0001".into(),
+            created_by: "creator".into(),
+            participants: ids
+                .iter()
+                .map(|id| Participant {
+                    id: id.to_string(),
+                    name: format!("User {id}"),
+                })
+                .collect(),
+            active_sharer: None,
+            pending_share_request: None,
+            last_activity: Instant::now(),
+        }
+    }
+
+    #[test]
+    fn normalize_code_trims_and_uppercases() {
+        assert_eq!(normalize_code("  abcd1234ef56 "), "ABCD1234EF56");
+        assert_eq!(normalize_code("AbC"), "ABC");
+    }
+
+    #[test]
+    fn generate_code_has_expected_shape() {
+        let code = generate_code();
+        assert_eq!(code.len(), CODE_LEN);
+        assert!(code.chars().all(|c| c.is_ascii_hexdigit()));
+        assert!(code.chars().all(|c| !c.is_ascii_lowercase()));
+    }
+
+    #[test]
+    fn stream_url_includes_room_param() {
+        let url = stream_url_for("ABCD1234EF56", "192.168.1.10");
+        assert_eq!(url, "ws://192.168.1.10:9001?room=ABCD1234EF56");
+    }
+
+    #[test]
+    fn active_host_uses_public_host_in_remote_mode() {
+        let cfg = NetworkConfig {
+            mode: NetworkMode::Remote,
+            public_host: Some("example.com".into()),
+        };
+        assert_eq!(active_host(&cfg), "example.com");
+    }
+
+    #[test]
+    fn active_host_falls_back_when_remote_host_missing() {
+        let cfg = NetworkConfig {
+            mode: NetworkMode::Remote,
+            public_host: Some("   ".into()),
+        };
+        let host = active_host(&cfg);
+        assert!(!host.is_empty());
+    }
+
+    #[test]
+    fn active_host_lan_is_not_example_com() {
+        let cfg = NetworkConfig {
+            mode: NetworkMode::Lan,
+            public_host: Some("example.com".into()),
+        };
+        assert_ne!(active_host(&cfg), "example.com");
+    }
+
+    #[test]
+    fn ensure_member_accepts_and_rejects() {
+        let session = sample_session(&["a", "b"]);
+        assert!(ensure_member(&session, "a").is_ok());
+        assert!(ensure_member(&session, "zzz").is_err());
+    }
+
+    #[test]
+    fn extract_room_from_query_parses_room() {
+        assert_eq!(
+            extract_room_from_query(Some("room=ABCD1234EF56")),
+            Some("ABCD1234EF56".to_string())
+        );
+        assert_eq!(
+            extract_room_from_query(Some("foo=1&room=abcd&bar=2")),
+            Some("ABCD".to_string())
+        );
+    }
+
+    #[test]
+    fn extract_room_from_query_handles_missing_and_empty() {
+        assert_eq!(extract_room_from_query(None), None);
+        assert_eq!(extract_room_from_query(Some("")), None);
+        assert_eq!(extract_room_from_query(Some("room=")), None);
+        assert_eq!(extract_room_from_query(Some("stream=1")), None);
+    }
+
+    #[test]
+    fn touch_updates_activity() {
+        let mut session = sample_session(&["a"]);
+        session.last_activity = Instant::now() - Duration::from_secs(120);
+        let before = session.last_activity;
+        touch(&mut session);
+        assert!(session.last_activity >= before);
+    }
+}

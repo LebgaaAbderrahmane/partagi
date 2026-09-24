@@ -29,20 +29,33 @@ pnpm exec tsc --noEmit
 - `jsdom` environment for DOM APIs (`localStorage`, events)
 - `@testing-library/react` + `@testing-library/jest-dom` for components
 
-Config lives in `vite.config.ts` (`test` block) or `vitest.config.ts`.
+Config lives in `vitest.config.ts` (jsdom, setup `src/test/setup.ts`).
 
-### What to test
+### Current coverage (v0.2)
+
+| File | Covers |
+|------|--------|
+| `src/lib/recent-sessions.test.ts` | load/save recent codes: empty, corrupt JSON, filter, dedupe/uppercase, cap |
+| `src/lib/urls.test.ts` | `streamHostFromUrl`, `viewerUrlFromStream`, `wsUrlWithRoom` |
+| `src/components/ui/Modal.test.tsx` | open/closed, aria, Escape, backdrop vs body, close button |
+| `src/components/ui/Toast.test.tsx` | provider requirement, auto-dismiss 5s, manual dismiss, multi |
+| `src/components/ui/primitives.test.tsx` | Avatar initials/active, Badge variant, Button classes/disabled |
+
+Test files are excluded from `tsconfig.json` so `pnpm build` typechecks app code only; Vitest typechecks tests itself.
+
+### What to test next
+
+### What to test next
 
 | Area | Priority | Notes |
 |------|----------|-------|
-| `loadRecent` / `saveRecent` (Home) | High | Pure-ish; mock `localStorage`; cap 5, dedupe, uppercase |
-| Room code normalize/validate helpers | High | Case, trim, empty |
-| URL builders (viewer URL from stream URL + room) | High | Must include `?room=` |
-| `Modal` | High | Escape close, role/aria, focus trap (when implemented) |
-| `Toast` | Medium | queue, auto-dismiss, variant classes |
-| `Button` | Low | variant/size class mapping |
-| `Session` reconnect helper | High | backoff schedule once extracted |
-| Full `Session` | Low/optional | Heavy WS/canvas mocks — prefer extracting pure logic |
+| Room code normalize (Rust) | Done | `normalize_code`, `generate_code` |
+| URL builders | Done | must include `?room=` |
+| `Modal` / `Toast` / primitives | Done | focus trap still TODO in P3 |
+| Share approval state machine | High | extract pure fn from `main.rs` commands |
+| Session leave/GC predicates | Medium | empty-room + TTL |
+| `Session` reconnect backoff | High | extract from component in P2 |
+| `Home` create/join handlers | Medium | mock `invoke` |
 
 ### Patterns
 
