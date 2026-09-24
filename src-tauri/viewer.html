@@ -128,6 +128,26 @@
       font-size: 0.75rem;
       color: #555;
     }
+
+    .audio-unlock {
+      position: fixed;
+      bottom: 3rem;
+      left: 50%;
+      transform: translateX(-50%);
+      background: #6366f1;
+      border: none;
+      color: white;
+      padding: 0.6rem 1.2rem;
+      border-radius: 8px;
+      font-size: 0.9rem;
+      cursor: pointer;
+      z-index: 30;
+      display: none;
+    }
+
+    .audio-unlock.visible {
+      display: block;
+    }
   </style>
 </head>
 <body>
@@ -138,6 +158,8 @@
     <div class="overlay-text" id="overlay-text">Connecting...</div>
     <div class="overlay-sub" id="overlay-sub"></div>
   </div>
+
+  <button class="audio-unlock" id="audio-unlock" onclick="unlockAudio()">🔊 Tap to enable audio</button>
 
   <button class="fullscreen-btn" id="fullscreen-btn" onclick="toggleFullscreen()">Fullscreen</button>
 
@@ -160,6 +182,17 @@
     const statusText = document.getElementById('status-text');
     const reconnectInfo = document.getElementById('reconnect-info');
     const fullscreenBtn = document.getElementById('fullscreen-btn');
+    const audioUnlockBtn = document.getElementById('audio-unlock');
+    let audioCtx = null;
+
+    function unlockAudio() {
+      if (!audioCtx) {
+        audioCtx = new AudioContext({ sampleRate: 16000 });
+      }
+      audioCtx.resume().then(() => {
+        audioUnlockBtn.classList.remove('visible');
+      });
+    }
 
     let ws = null;
     let reconnectDelay = 1000;
@@ -201,8 +234,6 @@
         reconnectDelay = 1000;
       };
 
-      let audioCtx = null;
-
       ws.onmessage = (event) => {
         if (event.data instanceof Blob) {
           event.data.arrayBuffer().then((buf) => {
@@ -233,19 +264,21 @@
                 audioCtx = new AudioContext({ sampleRate: 16000 });
               }
               if (audioCtx.state === 'suspended') {
-                audioCtx.resume();
+                audioUnlockBtn.classList.add('visible');
+              } else {
+                audioUnlockBtn.classList.remove('visible');
+                const int16 = new Int16Array(payload.buffer, payload.byteOffset, payload.byteLength / 2);
+                const float32 = new Float32Array(int16.length);
+                for (let i = 0; i < int16.length; i++) {
+                  float32[i] = int16[i] / 32768.0;
+                }
+                const audioBuffer = audioCtx.createBuffer(1, float32.length, 16000);
+                audioBuffer.getChannelData(0).set(float32);
+                const source = audioCtx.createBufferSource();
+                source.buffer = audioBuffer;
+                source.connect(audioCtx.destination);
+                source.start();
               }
-              const int16 = new Int16Array(payload.buffer, payload.byteOffset, payload.byteLength / 2);
-              const float32 = new Float32Array(int16.length);
-              for (let i = 0; i < int16.length; i++) {
-                float32[i] = int16[i] / 32768.0;
-              }
-              const audioBuffer = audioCtx.createBuffer(1, float32.length, 16000);
-              audioBuffer.getChannelData(0).set(float32);
-              const source = audioCtx.createBufferSource();
-              source.buffer = audioBuffer;
-              source.connect(audioCtx.destination);
-              source.start();
             }
           });
         }

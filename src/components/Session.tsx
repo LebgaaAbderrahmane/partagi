@@ -7,6 +7,9 @@ import {
   stopMic,
   listOutputs,
   getParticipants,
+  getActiveSharer,
+  requestScreenShare,
+  stopSharing,
   takeoverShare,
 } from "../lib/tauri-commands";
 
@@ -37,6 +40,7 @@ export default function Session({
 
   const [participants, setParticipants] = useState<string[]>([]);
   const [activeSharer, setActiveSharer] = useState<string | null>(null);
+  const [audioUnlocked, setAudioUnlocked] = useState(false);
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const wsRef = useRef<WebSocket | null>(null);
@@ -110,7 +114,11 @@ export default function Session({
   }, [streamUrl]);
 
   useEffect(() => {
-    audioCtxRef.current = new AudioContext({ sampleRate: 16000 });
+    const audioCtx = new AudioContext({ sampleRate: 16000 });
+    audioCtxRef.current = audioCtx;
+    if (audioCtx.state === "running") {
+      setAudioUnlocked(true);
+    }
     connectWs();
     return () => {
       if (retryRef.current) clearTimeout(retryRef.current);
@@ -123,14 +131,33 @@ export default function Session({
   useEffect(() => {
     pollRef.current = setInterval(async () => {
       try {
-        const p = await getParticipants(roomCode);
+        const [p, sharer] = await Promise.all([
+          getParticipants(roomCode),
+          getActiveSharer(roomCode),
+        ]);
         setParticipants(p);
+        setActiveSharer(sharer);
+        setIsSharing((cur) => {
+          if (!cur) return cur;
+          return sharer === participantId ? cur : false;
+        });
       } catch {}
     }, 2000);
     return () => {
       if (pollRef.current) clearInterval(pollRef.current);
     };
-  }, [roomCode]);
+  }, [roomCode, participantId]);
+
+  const unlockAudio = async () => {
+    const ctx = audioCtxRef.current;
+    if (!ctx) return;
+    if (ctx.state === "suspended") {
+      await ctx.resume();
+    }
+    if (ctx.state === "running") {
+      setAudioUnlocked(true);
+    }
+  };
 
   const loadOutputs = async () => {
     try {
@@ -148,6 +175,7 @@ export default function Session({
     try {
       if (isSharing) {
         await stopStream();
+        await stopSharing(roomCode, participantId);
         setIsSharing(false);
         setActiveSharer(null);
       } else if (activeSharer && activeSharer !== participantId) {
@@ -166,6 +194,9 @@ export default function Session({
 
   const handleStartShare = async () => {
     try {
+      if (!activeSharer || activeSharer === participantId) {
+        await requestScreenShare(roomCode, participantId);
+      }
       await startStream(selectedOutput || undefined);
       setIsSharing(true);
       setActiveSharer(participantId);
@@ -175,16 +206,17 @@ export default function Session({
     }
   };
 
+  const handleCancelShare = () => {
+    setShowMonitorPicker(false);
+  };
+
   const handleToggleMic = async () => {
     try {
       if (isMicOn) {
         await stopMic();
         setIsMicOn(false);
       } else {
-        const ctx = audioCtxRef.current;
-        if (ctx && ctx.state === "suspended") {
-          await ctx.resume();
-        }
+        await unlockAudio();
         await startMic();
         setIsMicOn(true);
       }
@@ -277,7 +309,20 @@ export default function Session({
               <p>Connecting to stream server...</p>
             </div>
           )}
-          {connected && !isSharing && !showMonitorPicker && (
+          {connected && activeSharer && activeSharer !== participantId && !showMonitorPicker && (
+            <div style={{
+              position: "absolute",
+              top: "50%",
+              left: "50%",
+              transform: "translate(-50%, -50%)",
+              color: "var(--text-muted)",
+              textAlign: "center",
+            }}>
+              <p>{activeSharer.slice(0, 8)} is sharing their screen</p>
+              <p style={{ fontSize: "0.8rem" }}>You can take over with "Share Screen"</p>
+            </div>
+          )}
+          {connected && !activeSharer && !isSharing && !showMonitorPicker && (
             <div style={{
               position: "absolute",
               top: "50%",
@@ -289,6 +334,25 @@ export default function Session({
               <p>No one is sharing their screen</p>
               <p style={{ fontSize: "0.8rem" }}>Click "Share Screen" to get started</p>
             </div>
+          )}
+          {connected && !audioUnlocked && activeSharer && activeSharer !== participantId && (
+            <button
+              onClick={unlockAudio}
+              style={{
+                position: "absolute",
+                bottom: 16,
+                left: "50%",
+                transform: "translateX(-50%)",
+                background: "var(--accent)",
+                border: "none",
+                color: "white",
+                padding: "0.5rem 1rem",
+                borderRadius: "var(--radius)",
+                fontSize: "0.85rem",
+              }}
+            >
+              Tap to hear audio
+            </button>
           )}
           {showMonitorPicker && (
             <div style={{
@@ -339,7 +403,7 @@ export default function Session({
                 <p style={{ fontSize: "0.8rem", color: "var(--text-muted)" }}>No displays found</p>
               )}
               <div style={{ display: "flex", gap: "0.5rem" }}>
-                <button onClick={() => setShowMonitorPicker(false)} style={{ flex: 1 }}>
+                <button onClick={handleCancelShare} style={{ flex: 1 }}>
                   Cancel
                 </button>
                 <button className="primary" onClick={handleStartShare} style={{ flex: 1 }}>
@@ -390,8 +454,30 @@ export default function Session({
             ))}
           </ul>
 
-          <div style={{ marginTop: "auto", padding: "0.5rem", background: "var(--bg)", borderRadius: "var(--radius)", fontSize: "0.75rem", color: "var(--text-muted)" }}>
-            {connected ? "Connected to server" : "Connecting..."}
+          <div style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            padding: "0.4rem 0.75rem",
+            background: "var(--bg)",
+            borderRadius: "var(--radius)",
+            fontSize: "0.75rem",
+            color: "var(--text-muted)",
+          }}>
+            <span>{connected ? "Connected to server" : "Connecting..."}</span>
+            <span style={{
+              display: "flex",
+              alignItems: "center",
+              gap: "0.35rem",
+            }}>
+              <span style={{
+                width: 8,
+                height: 8,
+                borderRadius: "50%",
+                background: activeSharer ? "var(--success)" : "var(--text-muted)",
+              }} />
+              {activeSharer ? "Sharing active" : "Idle"}
+            </span>
           </div>
         </aside>
       </div>
