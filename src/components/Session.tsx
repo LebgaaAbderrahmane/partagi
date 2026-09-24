@@ -25,6 +25,7 @@ import {
   getActiveSharer,
   getPendingShareRequest,
   getViewerCount,
+  getServerStatus,
   requestScreenShare,
   approveShareRequest,
   rejectShareRequest,
@@ -35,6 +36,7 @@ import {
 } from "../lib/tauri-commands";
 import { Button, Modal, Avatar, Badge, useToast } from "./ui";
 import { viewerUrlFromStream } from "../lib/urls";
+import { nextBackoffDelay, BACKOFF_BASE_MS } from "../lib/backoff";
 
 interface SessionProps {
   roomCode: string;
@@ -81,6 +83,7 @@ export default function Session({
   const [fps, setFps] = useState(0);
   const [resolution, setResolution] = useState("—");
   const [micLevel, setMicLevel] = useState(0);
+  const [serverIssues, setServerIssues] = useState<string[]>([]);
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const wsRef = useRef<WebSocket | null>(null);
@@ -89,6 +92,10 @@ export default function Session({
   const audioCtxRef = useRef<AudioContext | null>(null);
   const isSharingRef = useRef(false);
   const isMicOnRef = useRef(false);
+  const reconnectDelayRef = useRef(BACKOFF_BASE_MS);
+  const intentionalCloseRef = useRef(false);
+  const pollErrorToastRef = useRef(false);
+  const [reconnectInMs, setReconnectInMs] = useState<number | null>(null);
 
   const selectedOutputRef = useRef("");
   selectedOutputRef.current = selectedOutput;
@@ -118,10 +125,13 @@ export default function Session({
   };
 
   const connectWs = useCallback(() => {
+    if (intentionalCloseRef.current) return;
     const ws = new WebSocket(streamUrl);
     wsRef.current = ws;
 
     ws.onopen = () => {
+      reconnectDelayRef.current = BACKOFF_BASE_MS;
+      setReconnectInMs(null);
       setConnected(true);
     };
 
@@ -191,7 +201,11 @@ export default function Session({
 
     ws.onclose = () => {
       setConnected(false);
-      retryRef.current = setTimeout(connectWs, 1000);
+      if (intentionalCloseRef.current) return;
+      const delay = reconnectDelayRef.current;
+      setReconnectInMs(delay);
+      reconnectDelayRef.current = nextBackoffDelay(delay);
+      retryRef.current = setTimeout(connectWs, delay);
     };
 
     ws.onerror = () => {
@@ -200,12 +214,26 @@ export default function Session({
   }, [streamUrl]);
 
   useEffect(() => {
+    intentionalCloseRef.current = false;
+    reconnectDelayRef.current = BACKOFF_BASE_MS;
+    setReconnectInMs(null);
+    connectWs();
+
+    getServerStatus()
+      .then((s) => {
+        const issues: string[] = [];
+        if (!s.stream_ok && s.stream_error) issues.push(s.stream_error);
+        if (!s.viewer_ok && s.viewer_error) issues.push(s.viewer_error);
+        setServerIssues(issues);
+        for (const msg of issues) toast(msg, "error");
+      })
+      .catch(() => {});
+
     const audioCtx = new AudioContext({ sampleRate: 16000 });
     audioCtxRef.current = audioCtx;
     if (audioCtx.state === "running") {
       setAudioUnlocked(true);
     }
-    connectWs();
 
     fpsIntervalRef.current = setInterval(() => {
       const frames = frameCountRef.current;
@@ -218,13 +246,14 @@ export default function Session({
     }, 1000);
 
     return () => {
+      intentionalCloseRef.current = true;
       if (retryRef.current) clearTimeout(retryRef.current);
       if (pollRef.current) clearInterval(pollRef.current);
       if (fpsIntervalRef.current) clearInterval(fpsIntervalRef.current);
       wsRef.current?.close();
       audioCtxRef.current?.close();
     };
-  }, [connectWs]);
+  }, [connectWs, toast]);
 
   useEffect(() => {
     isMicOnRef.current = isMicOn;
@@ -247,6 +276,10 @@ export default function Session({
         setActiveSharer(sharer);
         setPendingRequest(pending);
         setViewerCount(viewers);
+        if (pollErrorToastRef.current) {
+          pollErrorToastRef.current = false;
+          toast("Session state resynced", "success");
+        }
 
         if (waitingApproval && sharer === participantId) {
           setWaitingApproval(false);
@@ -259,12 +292,17 @@ export default function Session({
           setIsSharing(false);
           stopStream().catch(() => {});
         }
-      } catch {}
+      } catch (e) {
+        if (!pollErrorToastRef.current) {
+          pollErrorToastRef.current = true;
+          toast(`Session poll failed — retrying (${String(e)})`, "error");
+        }
+      }
     }, 2000);
     return () => {
       if (pollRef.current) clearInterval(pollRef.current);
     };
-  }, [roomCode, participantId, waitingApproval]);
+  }, [roomCode, participantId, waitingApproval, toast]);
 
   const unlockAudio = async () => {
     const ctx = audioCtxRef.current;
@@ -388,16 +426,31 @@ export default function Session({
   };
 
   const handleLeave = async () => {
+    intentionalCloseRef.current = true;
     if (retryRef.current) clearTimeout(retryRef.current);
     if (pollRef.current) clearInterval(pollRef.current);
-    if (isSharing) {
-      await stopStream();
+    try {
+      if (isSharing) {
+        await stopStream();
+      }
+    } catch (e) {
+      toast(String(e), "error");
     }
-    if (isMicOn) {
-      await stopMic();
+    try {
+      if (isMicOn) {
+        await stopMic();
+      }
+    } catch (e) {
+      toast(String(e), "error");
     }
-    wsRef.current?.close();
-    await leaveSession(roomCode, participantId);
+    try {
+      wsRef.current?.close();
+    } catch {}
+    try {
+      await leaveSession(roomCode, participantId);
+    } catch (e) {
+      toast(`Leave failed: ${String(e)}`, "error");
+    }
     onLeave();
   };
 
@@ -612,8 +665,24 @@ export default function Session({
           )}
 
           {!connected && (
-            <div className="stage-overlay">
-              <p>Connecting to stream server...</p>
+            <div className="stage-overlay" role="status">
+              <p>Reconnecting to stream server…</p>
+              {reconnectInMs != null && (
+                <p className="hint">
+                  Retrying in {Math.max(1, Math.ceil(reconnectInMs / 1000))}s
+                </p>
+              )}
+            </div>
+          )}
+
+          {connected && serverIssues.length > 0 && (
+            <div className="stage-overlay" role="alert">
+              <p>Server problem</p>
+              {serverIssues.map((msg) => (
+                <p className="hint" key={msg}>
+                  {msg}
+                </p>
+              ))}
             </div>
           )}
 
@@ -778,7 +847,13 @@ export default function Session({
 
           {!sidebarCollapsed && (
             <div className="status-bar">
-              <span>{connected ? "Connected to server" : "Connecting..."}</span>
+              <span>
+                {connected
+                  ? "Connected to server"
+                  : intentionalCloseRef.current
+                    ? "Disconnected"
+                    : "Reconnecting…"}
+              </span>
               <span className="row row-gap-sm">
                 <span className={`status-dot ${activeSharer ? "status-dot-live" : ""}`} />
                 {activeSharer ? "Sharing active" : "Idle"}

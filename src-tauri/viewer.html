@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Partagi Viewer</title>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -236,7 +236,7 @@
 
       ws.onopen = () => {
         setStatus('connected', 'Connected');
-        setOverlay(true, ' Waiting for stream...', 'Connected — waiting for sharer to start');
+        setOverlay(true, '~', 'Connected — waiting for stream', '');
         reconnectDelay = 1000;
       };
 
@@ -260,9 +260,7 @@
                 URL.revokeObjectURL(blobUrl);
 
                 frameCount++;
-                if (frameCount === 1) {
-                  setOverlay(false);
-                }
+                setOverlay(false);
               };
               img.src = blobUrl;
             } else if (type === 0x02) {
@@ -308,7 +306,7 @@
     function scheduleReconnect() {
       if (reconnectTimer) clearTimeout(reconnectTimer);
       const delay = reconnectDelay;
-      reconnectDelay = Math.min(reconnectDelay * 1.5, 5000);
+      reconnectDelay = Math.min(Math.round(reconnectDelay * 1.5), 5000);
       reconnectInfo.textContent = `Reconnecting in ${Math.round(delay / 1000)}s...`;
       reconnectTimer = setTimeout(() => {
         reconnectInfo.textContent = '';
