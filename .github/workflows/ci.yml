@@ -49,8 +49,15 @@ jobs:
       - name: TypeScript check
         run: pnpm build
 
+      - name: Frontend tests
+        run: pnpm test
+
       - name: Rust check
         run: cargo check
+        working-directory: src-tauri
+
+      - name: Rust tests
+        run: cargo test
         working-directory: src-tauri
 
       - name: Build bundles
