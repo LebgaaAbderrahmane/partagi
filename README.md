@@ -1,22 +1,38 @@
 # Partagi
 
-Lightweight LAN screen sharing for small teams. No cloud, no accounts, no lag.
+Lightweight screen sharing for small teams. No cloud accounts, no lag-prone relays on your LAN — direct WebSocket streaming. Optional **remote mode** via port forwarding when teammates are off-network.
 
-Share your screen with 3-10 people on the same network at ~30fps with mic audio. Any participant can take over as the sharer. Mobile devices join via a web browser — no app install needed.
+Share your screen with 3-10 people at up to ~30fps with mic audio. Mobile devices join via a web browser — no app install needed.
 
 ## Why
 
-Existing tools (Meet, Discord, Zoom) compress aggressively and add latency through relay servers. Partagi runs entirely on your local network — direct WebSocket streaming with no middleman.
+Existing tools (Meet, Discord, Zoom) compress aggressively and add latency through relay servers. Partagi runs on your machine — capture once, fan out directly. Use **LAN** mode on the same network, or **Remote** mode with your own port forwards when you need the internet (no Partagi-operated cloud).
 
 ## Features
 
 - **~30fps screen sharing** via native capture (grim on Linux, xcap on macOS/Windows)
-- **Mic audio** streamed alongside video
-- **Multi-monitor** selection — pick which display to share
-- **Takeover sharing** — any participant can take over
-- **Mobile web viewer** — open `http://<host-ip>:9002` on any device
-- **Zero setup** — create a session, share the 8-character code, done
+- **Quality presets** — Low / Balanced / High (scale, JPEG, FPS)
+- **Mic audio** with live level meter
+- **Multi-monitor** selection
+- **Share approval flow** — empty room starts instantly; occupied rooms require the current sharer to approve
+- **Mobile web viewer** — `http://<host>:9002/?room=CODE` + QR invite
+- **LAN or Remote** — Remote uses public IP/hostname + port forwarding ([docs/remote.md](docs/remote.md))
+- **Room-scoped streaming** — 12-character codes; WebSocket requires `?room=`
 - **Cross-platform** — Linux, macOS, Windows
+- **Shortcuts** — `S` share, `M` mic, `Shift+Q` leave, `Esc` close
+
+## Documentation
+
+| Doc | Contents |
+|-----|----------|
+| [docs/architecture.md](docs/architecture.md) | System design, ports, capture matrix |
+| [docs/features.md](docs/features.md) | Full feature reference & shortcuts |
+| [docs/remote.md](docs/remote.md) | Over-internet / port-forward setup |
+| [docs/security.md](docs/security.md) | Threat model, what is enforced, gaps |
+| [docs/development.md](docs/development.md) | Dev environment, conventions, PR flow |
+| [docs/testing.md](docs/testing.md) | Vitest + cargo test guidance |
+| [docs/troubleshooting.md](docs/troubleshooting.md) | Common failures & fixes |
+| [prd.md](prd.md) | Product requirements & roadmap |
 
 ## Installation
 
@@ -95,12 +111,13 @@ Output: `src-tauri/target/release/bundle/` contains `.deb`, `.rpm`, `.dmg`, `.ms
 ## Usage
 
 1. Open Partagi and enter your display name
-2. Click **Create Session** — you get an 8-character room code
-3. Share the code with your team (they join via the same app)
+2. Click **New Session** — you get a 12-character room code
+3. Share the code (and viewer link/QR) with your team
 4. Click **Share Screen** — pick your monitor if you have multiple
-5. Others watch in the app or on their phone at `http://<host-ip>:9002`
-6. Toggle mic with the **Mic On/Off** button
-7. Anyone can take over sharing by clicking **Share Screen** while someone else is sharing
+5. If someone else is sharing, your request waits for their approval
+6. Others watch in the app or on their phone at the viewer URL
+7. Toggle mic with **Mic On/Off**
+8. Set **Network → Remote** and forward ports 9001/9002 if teammates are off-LAN ([guide](docs/remote.md))
 
 ## Architecture
 
@@ -111,7 +128,7 @@ Sharer Desktop                    Viewers
 │    ↓ JPEG frames    │          │  (React)      │
 │  ffmpeg / cpal      │──WS:9001──│  canvas +     │
 │    ↓ PCM audio      │          │  Web Audio    │
-│  broadcast channel  │          └──────────────┘
+│  per-room broadcast │          └──────────────┘
 │    ↓                │          ┌──────────────┐
 │  axum HTTP ─────────│──:9002───│  Phone Browser│
 │  (viewer.html)      │          │  (no install) │
@@ -123,15 +140,17 @@ Sharer Desktop                    Viewers
 | Desktop framework | Tauri 2 (Rust + React) |
 | Screen capture | grim (Linux/Wayland), xcap (macOS/Windows) |
 | Audio capture | ffmpeg PulseAudio (Linux), cpal (macOS/Windows) |
-| Transport | WebSocket binary frames (0x01=video, 0x02=audio) |
+| Transport | WebSocket binary frames (0x01=video, 0x02=audio), room required |
 | Web viewer | Vanilla JS + Canvas + Web Audio API |
 | HTTP server | Axum (port 9002) |
+
+More detail: [docs/architecture.md](docs/architecture.md).
 
 ## Ports
 
 | Port | Purpose |
 |------|---------|
-| 9001 | WebSocket stream server |
+| 9001 | WebSocket stream server (`?room=` required) |
 | 9002 | HTTP web viewer |
 
 ## License
