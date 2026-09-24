@@ -56,7 +56,11 @@ export default function Session({
   const [isMicOn, setIsMicOn] = useState(false);
   const [copied, setCopied] = useState(false);
   const [viewerCopied, setViewerCopied] = useState(false);
-  const viewerUrl = streamUrl.replace(/^ws:\/\//, "http://").replace(/:\d+$/, ":9002");
+  const streamHost = streamUrl
+    .replace(/^wss?:\/\//, "")
+    .split("?")[0]
+    .replace(/:\d+$/, "");
+  const viewerUrl = `http://${streamHost}:9002/?room=${encodeURIComponent(roomCode)}`;
 
   const [outputs, setOutputs] = useState<string[]>([]);
   const [selectedOutput, setSelectedOutput] = useState<string>("");
@@ -321,7 +325,7 @@ export default function Session({
       if (!activeSharer || activeSharer === participantId) {
         await requestScreenShare(roomCode, participantId);
       }
-      await startStream(selectedOutput || undefined, quality);
+      await startStream(roomCode, selectedOutput || undefined, quality);
       setIsSharing(true);
       isSharingRef.current = true;
       setActiveSharer(participantId);
@@ -337,7 +341,7 @@ export default function Session({
     if (isSharingRef.current) {
       try {
         await stopStream();
-        await startStream(selectedOutputRef.current || undefined, q);
+        await startStream(roomCode, selectedOutputRef.current || undefined, q);
       } catch (e) {
         toast(String(e), "error");
       }
@@ -378,7 +382,7 @@ export default function Session({
         setIsMicOn(false);
       } else {
         await unlockAudio();
-        await startMic();
+        await startMic(roomCode);
         setIsMicOn(true);
       }
     } catch (e) {

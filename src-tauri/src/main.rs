@@ -6,19 +6,22 @@ use std::collections::HashMap;
 use std::net::UdpSocket;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
+use std::time::{Duration, Instant};
 use tauri::State;
 use tokio::net::TcpListener;
 use tokio::sync::Mutex;
-use tokio_tungstenite::accept_async;
+use tokio_tungstenite::accept_hdr_async;
 use uuid::Uuid;
 
 const STREAM_PORT: u16 = 9001;
 const VIEWER_PORT: u16 = 9002;
 const VIEWER_HTML: &str = include_str!("../viewer.html");
+const SESSION_TTL: Duration = Duration::from_secs(30 * 60);
+const CODE_LEN: usize = 12;
 
 struct AppState {
-    sessions: Mutex<HashMap<String, Session>>,
-    broadcaster: stream::FrameBroadcaster,
+    sessions: Arc<Mutex<HashMap<String, Session>>>,
+    broadcasters: Arc<Mutex<HashMap<String, stream::FrameBroadcaster>>>,
     capture: Mutex<stream::ScreenCapture>,
     mic: Mutex<stream::MicCapture>,
     viewer_count: Arc<AtomicUsize>,
@@ -30,13 +33,15 @@ struct Participant {
     name: String,
 }
 
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Clone)]
 struct Session {
     code: String,
+    #[allow(dead_code)]
     created_by: String,
     participants: Vec<Participant>,
     active_sharer: Option<String>,
     pending_share_request: Option<String>,
+    last_activity: Instant,
 }
 
 #[derive(Serialize)]
@@ -50,6 +55,14 @@ struct JoinSessionResponse {
     stream_url: String,
 }
 
+fn normalize_code(raw: &str) -> String {
+    raw.trim().to_uppercase()
+}
+
+fn generate_code() -> String {
+    Uuid::new_v4().simple().to_string()[..CODE_LEN].to_uppercase()
+}
+
 fn get_local_ip() -> String {
     UdpSocket::bind("0.0.0.0:0")
         .and_then(|s| {
@@ -57,6 +70,27 @@ fn get_local_ip() -> String {
             Ok(s.local_addr()?.ip().to_string())
         })
         .unwrap_or_else(|_| "127.0.0.1".to_string())
+}
+
+fn stream_url_for(code: &str) -> String {
+    format!(
+        "ws://{}:{}?room={}",
+        get_local_ip(),
+        STREAM_PORT,
+        code
+    )
+}
+
+fn ensure_member(session: &Session, participant_id: &str) -> Result<(), String> {
+    if session.participants.iter().any(|p| p.id == participant_id) {
+        Ok(())
+    } else {
+        Err("Not a session participant".to_string())
+    }
+}
+
+fn touch(session: &mut Session) {
+    session.last_activity = Instant::now();
 }
 
 #[tauri::command]
@@ -70,7 +104,7 @@ fn create_session(
     creator_id: String,
     display_name: String,
 ) -> CreateSessionResponse {
-    let code = Uuid::new_v4().to_string()[..8].to_string();
+    let code = generate_code();
     let session = Session {
         code: code.clone(),
         created_by: creator_id.clone(),
@@ -80,8 +114,13 @@ fn create_session(
         }],
         active_sharer: None,
         pending_share_request: None,
+        last_activity: Instant::now(),
     };
     state.sessions.blocking_lock().insert(code.clone(), session);
+    state
+        .broadcasters
+        .blocking_lock()
+        .insert(code.clone(), stream::create_broadcaster());
     CreateSessionResponse { code }
 }
 
@@ -92,22 +131,31 @@ fn join_session(
     participant_id: String,
     display_name: String,
 ) -> Result<JoinSessionResponse, String> {
-    let mut sessions = state.sessions.blocking_lock();
-    let session = sessions
-        .get_mut(&code)
-        .ok_or_else(|| "Session not found".to_string())?;
+    let code = normalize_code(&code);
+    let stream_url;
+    {
+        let mut sessions = state.sessions.blocking_lock();
+        let session = sessions
+            .get_mut(&code)
+            .ok_or_else(|| "Session not found".to_string())?;
 
-    if !session.participants.iter().any(|p| p.id == participant_id) {
-        session.participants.push(Participant {
-            id: participant_id,
-            name: display_name,
-        });
+        if !session.participants.iter().any(|p| p.id == participant_id) {
+            session.participants.push(Participant {
+                id: participant_id,
+                name: display_name,
+            });
+        }
+        touch(session);
+        stream_url = stream_url_for(&session.code);
     }
 
-    let stream_url = format!("ws://{}:{}", get_local_ip(), STREAM_PORT);
+    let mut broadcasters = state.broadcasters.blocking_lock();
+    broadcasters
+        .entry(code.clone())
+        .or_insert_with(stream::create_broadcaster);
 
     Ok(JoinSessionResponse {
-        code: session.code.clone(),
+        code,
         stream_url,
     })
 }
@@ -118,6 +166,7 @@ fn leave_session(
     code: String,
     participant_id: String,
 ) -> Result<(), String> {
+    let code = normalize_code(&code);
     let mut sessions = state.sessions.blocking_lock();
     if let Some(session) = sessions.get_mut(&code) {
         session.participants.retain(|p| p.id != participant_id);
@@ -129,6 +178,8 @@ fn leave_session(
         }
         if session.participants.is_empty() {
             sessions.remove(&code);
+            drop(sessions);
+            state.broadcasters.blocking_lock().remove(&code);
         }
     }
     Ok(())
@@ -136,27 +187,35 @@ fn leave_session(
 
 #[tauri::command]
 fn get_participants(state: State<AppState>, code: String) -> Vec<Participant> {
-    let sessions = state.sessions.blocking_lock();
+    let code = normalize_code(&code);
+    let mut sessions = state.sessions.blocking_lock();
     sessions
-        .get(&code)
-        .map(|s| s.participants.clone())
+        .get_mut(&code)
+        .map(|s| {
+            touch(s);
+            s.participants.clone()
+        })
         .unwrap_or_default()
 }
 
 #[tauri::command]
 fn get_active_sharer(state: State<AppState>, code: String) -> Option<String> {
-    let sessions = state.sessions.blocking_lock();
-    sessions
-        .get(&code)
-        .and_then(|s| s.active_sharer.clone())
+    let code = normalize_code(&code);
+    let mut sessions = state.sessions.blocking_lock();
+    sessions.get_mut(&code).and_then(|s| {
+        touch(s);
+        s.active_sharer.clone()
+    })
 }
 
 #[tauri::command]
 fn get_pending_share_request(state: State<AppState>, code: String) -> Option<String> {
-    let sessions = state.sessions.blocking_lock();
-    sessions
-        .get(&code)
-        .and_then(|s| s.pending_share_request.clone())
+    let code = normalize_code(&code);
+    let mut sessions = state.sessions.blocking_lock();
+    sessions.get_mut(&code).and_then(|s| {
+        touch(s);
+        s.pending_share_request.clone()
+    })
 }
 
 #[tauri::command]
@@ -165,8 +224,11 @@ fn cancel_share_request(
     code: String,
     participant_id: String,
 ) -> Result<(), String> {
+    let code = normalize_code(&code);
     let mut sessions = state.sessions.blocking_lock();
     if let Some(session) = sessions.get_mut(&code) {
+        ensure_member(session, &participant_id)?;
+        touch(session);
         if session.pending_share_request.as_deref() == Some(&participant_id) {
             session.pending_share_request = None;
         }
@@ -180,10 +242,13 @@ fn request_screen_share(
     code: String,
     participant_id: String,
 ) -> Result<RequestShareResponse, String> {
+    let code = normalize_code(&code);
     let mut sessions = state.sessions.blocking_lock();
     let session = sessions
         .get_mut(&code)
         .ok_or_else(|| "Session not found".to_string())?;
+    ensure_member(session, &participant_id)?;
+    touch(session);
 
     match &session.active_sharer {
         Some(current) if current == &participant_id => {
@@ -218,10 +283,13 @@ fn approve_share_request(
     code: String,
     approver_id: String,
 ) -> Result<String, String> {
+    let code = normalize_code(&code);
     let mut sessions = state.sessions.blocking_lock();
     let session = sessions
         .get_mut(&code)
         .ok_or_else(|| "Session not found".to_string())?;
+    ensure_member(session, &approver_id)?;
+    touch(session);
 
     if session.active_sharer.as_deref() != Some(&approver_id) {
         return Err("Only the active sharer can approve".to_string());
@@ -242,13 +310,16 @@ fn reject_share_request(
     code: String,
     rejector_id: String,
 ) -> Result<(), String> {
+    let code = normalize_code(&code);
     let mut sessions = state.sessions.blocking_lock();
     let session = sessions
         .get_mut(&code)
         .ok_or_else(|| "Session not found".to_string())?;
+    ensure_member(session, &rejector_id)?;
+    touch(session);
 
     if session.active_sharer.as_deref() != Some(&rejector_id) {
-        return Err("Only the active sharer can reject".to_string())?;
+        return Err("Only the active sharer can reject".to_string());
     }
 
     session.pending_share_request = None;
@@ -257,8 +328,11 @@ fn reject_share_request(
 
 #[tauri::command]
 fn stop_sharing(state: State<AppState>, code: String, participant_id: String) -> Result<(), String> {
+    let code = normalize_code(&code);
     let mut sessions = state.sessions.blocking_lock();
     if let Some(session) = sessions.get_mut(&code) {
+        ensure_member(session, &participant_id)?;
+        touch(session);
         if session.active_sharer.as_deref() == Some(&participant_id) {
             session.active_sharer = None;
         }
@@ -267,23 +341,25 @@ fn stop_sharing(state: State<AppState>, code: String, participant_id: String) ->
 }
 
 #[tauri::command]
-fn takeover_share(state: State<AppState>, code: String, participant_id: String) -> Result<(), String> {
-    let mut sessions = state.sessions.blocking_lock();
-    if let Some(session) = sessions.get_mut(&code) {
-        session.active_sharer = Some(participant_id);
-        session.pending_share_request = None;
-    }
-    Ok(())
-}
-
-#[tauri::command]
 async fn start_stream(
     state: State<'_, AppState>,
+    code: String,
     output: Option<String>,
     quality: Option<stream::Quality>,
 ) -> Result<(), String> {
+    let code = normalize_code(&code);
+    let broadcaster = {
+        let sessions = state.sessions.lock().await;
+        let session = sessions
+            .get(&code)
+            .ok_or_else(|| "Session not found".to_string())?;
+        let broadcasters = state.broadcasters.lock().await;
+        broadcasters
+            .get(&code)
+            .cloned()
+            .ok_or_else(|| format!("No media channel for session {}", session.code))?
+    };
     let mut capture = state.capture.lock().await;
-    let broadcaster = state.broadcaster.clone();
     capture
         .start(broadcaster, output, quality.unwrap_or_default())
         .await
@@ -297,9 +373,20 @@ fn stop_stream(state: State<AppState>) -> Result<(), String> {
 }
 
 #[tauri::command]
-async fn start_mic(state: State<'_, AppState>) -> Result<(), String> {
+async fn start_mic(state: State<'_, AppState>, code: String) -> Result<(), String> {
+    let code = normalize_code(&code);
+    let broadcaster = {
+        let sessions = state.sessions.lock().await;
+        sessions
+            .get(&code)
+            .ok_or_else(|| "Session not found".to_string())?;
+        let broadcasters = state.broadcasters.lock().await;
+        broadcasters
+            .get(&code)
+            .cloned()
+            .ok_or_else(|| "Session not found".to_string())?
+    };
     let mut mic = state.mic.lock().await;
-    let broadcaster = state.broadcaster.clone();
     mic.start(broadcaster).await
 }
 
@@ -320,62 +407,124 @@ fn get_viewer_count(state: State<AppState>) -> usize {
     state.viewer_count.load(Ordering::Relaxed)
 }
 
+fn extract_room_from_query(query: Option<&str>) -> Option<String> {
+    let query = query?;
+    for pair in query.split('&') {
+        if let Some(value) = pair.strip_prefix("room=") {
+            if !value.is_empty() {
+                return Some(normalize_code(value));
+            }
+        }
+    }
+    None
+}
+
 async fn run_stream_server(
-    broadcaster: stream::FrameBroadcaster,
+    sessions: Arc<Mutex<HashMap<String, Session>>>,
+    broadcasters: Arc<Mutex<HashMap<String, stream::FrameBroadcaster>>>,
     viewer_count: Arc<AtomicUsize>,
 ) {
-    let listener = TcpListener::bind(("0.0.0.0", STREAM_PORT))
-        .await
-        .expect("Failed to bind stream server");
+    let listener = match TcpListener::bind(("0.0.0.0", STREAM_PORT)).await {
+        Ok(l) => l,
+        Err(e) => {
+            eprintln!("[stream] Failed to bind stream server: {e}");
+            return;
+        }
+    };
 
     println!("[stream] WebSocket server listening on ws://0.0.0.0:{}", STREAM_PORT);
 
     loop {
-        if let Ok((stream, addr)) = listener.accept().await {
-            println!("[stream] New viewer connected from {}", addr);
-            viewer_count.fetch_add(1, Ordering::Relaxed);
-            let count = viewer_count.clone();
-            let mut rx = broadcaster.subscribe();
-            tokio::spawn(async move {
-                let ws = accept_async(stream)
-                    .await
-                    .expect("Failed to accept WebSocket");
-                let (mut ws_tx, mut ws_rx) = ws.split();
+        let Ok((stream, addr)) = listener.accept().await else {
+            continue;
+        };
 
-                loop {
-                    tokio::select! {
-                        frame = rx.recv() => {
-                            match frame {
-                                Ok(stream::StreamFrame::Video(data)) => {
-                                    let mut msg = Vec::with_capacity(1 + data.len());
-                                    msg.push(0x01);
-                                    msg.extend_from_slice(&data);
-                                    if ws_tx.send(tokio_tungstenite::tungstenite::Message::Binary(msg.into())).await.is_err() {
-                                        break;
-                                    }
+        let sessions = sessions.clone();
+        let broadcasters = broadcasters.clone();
+        let count = viewer_count.clone();
+
+        tokio::spawn(async move {
+            use tokio_tungstenite::tungstenite::handshake::server::{Request, Response};
+
+            let mut room = String::new();
+            let ws = accept_hdr_async(
+                stream,
+                |request: &Request, response: Response| {
+                    if let Some(code) = extract_room_from_query(request.uri().query()) {
+                        room = code;
+                    }
+                    Ok(response)
+                },
+            )
+            .await;
+
+            let ws = match ws {
+                Ok(ws) => ws,
+                Err(_) => {
+                    println!("[stream] Rejected WS handshake from {} (bad handshake)", addr);
+                    return;
+                }
+            };
+
+            if room.is_empty() {
+                println!("[stream] Rejected WS from {}: missing room code", addr);
+                return;
+            }
+
+            let broadcaster = {
+                let sessions_guard = sessions.lock().await;
+                if !sessions_guard.contains_key(&room) {
+                    drop(sessions_guard);
+                    println!("[stream] Rejected WS from {}: unknown room", addr);
+                    return;
+                }
+                let broadcasters_guard = broadcasters.lock().await;
+                broadcasters_guard.get(&room).cloned()
+            };
+
+            let Some(broadcaster) = broadcaster else {
+                println!("[stream] Rejected WS from {}: no media channel", addr);
+                return;
+            };
+
+            println!("[stream] Viewer connected from {} (room {})", addr, room);
+            count.fetch_add(1, Ordering::Relaxed);
+            let mut rx = broadcaster.subscribe();
+            let (mut ws_tx, mut ws_rx) = ws.split();
+
+            loop {
+                tokio::select! {
+                    frame = rx.recv() => {
+                        match frame {
+                            Ok(stream::StreamFrame::Video(data)) => {
+                                let mut msg = Vec::with_capacity(1 + data.len());
+                                msg.push(0x01);
+                                msg.extend_from_slice(&data);
+                                if ws_tx.send(tokio_tungstenite::tungstenite::Message::Binary(msg.into())).await.is_err() {
+                                    break;
                                 }
-                                Ok(stream::StreamFrame::Audio(data)) => {
-                                    let mut msg = Vec::with_capacity(1 + data.len());
-                                    msg.push(0x02);
-                                    msg.extend_from_slice(&data);
-                                    if ws_tx.send(tokio_tungstenite::tungstenite::Message::Binary(msg.into())).await.is_err() {
-                                        break;
-                                    }
-                                }
-                                Err(_) => break,
                             }
+                            Ok(stream::StreamFrame::Audio(data)) => {
+                                let mut msg = Vec::with_capacity(1 + data.len());
+                                msg.push(0x02);
+                                msg.extend_from_slice(&data);
+                                if ws_tx.send(tokio_tungstenite::tungstenite::Message::Binary(msg.into())).await.is_err() {
+                                    break;
+                                }
+                            }
+                            Err(_) => break,
                         }
-                        msg = ws_rx.next() => {
-                            if msg.is_none() {
-                                break;
-                            }
+                    }
+                    msg = ws_rx.next() => {
+                        if msg.is_none() {
+                            break;
                         }
                     }
                 }
-                count.fetch_sub(1, Ordering::Relaxed);
-                println!("[stream] Viewer {} disconnected", addr);
-            });
-        }
+            }
+            count.fetch_sub(1, Ordering::Relaxed);
+            println!("[stream] Viewer {} disconnected", addr);
+        });
     }
 }
 
@@ -388,38 +537,80 @@ async fn run_viewer_server() {
         }))
         .route("/health", get(|| async { "ok" }));
 
-    let listener = tokio::net::TcpListener::bind(("0.0.0.0", VIEWER_PORT))
-        .await
-        .expect("Failed to bind viewer server");
+    let listener = match tokio::net::TcpListener::bind(("0.0.0.0", VIEWER_PORT)).await {
+        Ok(l) => l,
+        Err(e) => {
+            eprintln!("[viewer] Failed to bind viewer server: {e}");
+            return;
+        }
+    };
 
     println!("[viewer] HTTP viewer server listening on http://0.0.0.0:{}", VIEWER_PORT);
 
-    axum::serve(listener, app)
-        .await
-        .expect("Viewer server failed");
+    if let Err(e) = axum::serve(listener, app).await {
+        eprintln!("[viewer] Viewer server error: {e}");
+    }
+}
+
+async fn run_session_gc(
+    sessions: Arc<Mutex<HashMap<String, Session>>>,
+    broadcasters: Arc<Mutex<HashMap<String, stream::FrameBroadcaster>>>,
+) {
+    loop {
+        tokio::time::sleep(Duration::from_secs(60)).await;
+        let expired: Vec<String> = {
+            let mut sessions = sessions.lock().await;
+            let expired: Vec<String> = sessions
+                .iter()
+                .filter(|(_, s)| s.last_activity.elapsed() > SESSION_TTL)
+                .map(|(k, _)| k.clone())
+                .collect();
+            for code in &expired {
+                sessions.remove(code);
+            }
+            expired
+        };
+        if !expired.is_empty() {
+            let mut broadcasters = broadcasters.lock().await;
+            for code in expired {
+                broadcasters.remove(&code);
+                println!("[session] Expired idle session {}", code);
+            }
+        }
+    }
 }
 
 fn main() {
-    let broadcaster = stream::create_broadcaster();
-    let broadcaster_for_server = broadcaster.clone();
+    let sessions = Arc::new(Mutex::new(HashMap::new()));
+    let broadcasters = Arc::new(Mutex::new(HashMap::new()));
     let viewer_count = Arc::new(AtomicUsize::new(0));
+
+    let sessions_for_server = sessions.clone();
+    let broadcasters_for_server = broadcasters.clone();
     let viewer_count_for_server = viewer_count.clone();
+    let sessions_for_gc = sessions.clone();
+    let broadcasters_for_gc = broadcasters.clone();
 
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
         .manage(AppState {
-            sessions: Mutex::new(HashMap::new()),
-            broadcaster,
+            sessions,
+            broadcasters,
             capture: Mutex::new(stream::ScreenCapture::new()),
             mic: Mutex::new(stream::MicCapture::new()),
             viewer_count,
         })
         .setup(move |_app| {
             tauri::async_runtime::spawn(run_stream_server(
-                broadcaster_for_server,
+                sessions_for_server,
+                broadcasters_for_server,
                 viewer_count_for_server,
             ));
             tauri::async_runtime::spawn(run_viewer_server());
+            tauri::async_runtime::spawn(run_session_gc(
+                sessions_for_gc,
+                broadcasters_for_gc,
+            ));
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -434,7 +625,6 @@ fn main() {
             approve_share_request,
             reject_share_request,
             stop_sharing,
-            takeover_share,
             start_stream,
             stop_stream,
             start_mic,

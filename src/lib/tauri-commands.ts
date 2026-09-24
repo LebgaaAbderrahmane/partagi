@@ -109,22 +109,19 @@ export async function stopSharing(
   return invoke("stop_sharing", { code, participantId });
 }
 
-export async function takeoverShare(
-  code: string,
-  participantId: string,
-): Promise<void> {
-  assertTauri();
-  return invoke("takeover_share", { code, participantId });
-}
-
 export type Quality = "Low" | "Balanced" | "High";
 
 export async function startStream(
+  code: string,
   output?: string,
   quality?: Quality,
 ): Promise<void> {
   assertTauri();
-  return invoke("start_stream", { output: output ?? null, quality: quality ?? null });
+  return invoke("start_stream", {
+    code,
+    output: output ?? null,
+    quality: quality ?? null,
+  });
 }
 
 export async function stopStream(): Promise<void> {
@@ -132,9 +129,9 @@ export async function stopStream(): Promise<void> {
   return invoke("stop_stream");
 }
 
-export async function startMic(): Promise<void> {
+export async function startMic(code: string): Promise<void> {
   assertTauri();
-  return invoke("start_mic");
+  return invoke("start_mic", { code });
 }
 
 export async function stopMic(): Promise<void> {
