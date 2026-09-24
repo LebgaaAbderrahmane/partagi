@@ -62,6 +62,21 @@ export async function getActiveSharer(
   return invoke("get_active_sharer", { code });
 }
 
+export async function getPendingShareRequest(
+  code: string,
+): Promise<string | null> {
+  assertTauri();
+  return invoke("get_pending_share_request", { code });
+}
+
+export async function cancelShareRequest(
+  code: string,
+  participantId: string,
+): Promise<void> {
+  assertTauri();
+  return invoke("cancel_share_request", { code, participantId });
+}
+
 export async function requestScreenShare(
   code: string,
   participantId: string,

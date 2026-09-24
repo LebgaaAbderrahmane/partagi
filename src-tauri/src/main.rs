@@ -149,6 +149,29 @@ fn get_active_sharer(state: State<AppState>, code: String) -> Option<String> {
 }
 
 #[tauri::command]
+fn get_pending_share_request(state: State<AppState>, code: String) -> Option<String> {
+    let sessions = state.sessions.blocking_lock();
+    sessions
+        .get(&code)
+        .and_then(|s| s.pending_share_request.clone())
+}
+
+#[tauri::command]
+fn cancel_share_request(
+    state: State<AppState>,
+    code: String,
+    participant_id: String,
+) -> Result<(), String> {
+    let mut sessions = state.sessions.blocking_lock();
+    if let Some(session) = sessions.get_mut(&code) {
+        if session.pending_share_request.as_deref() == Some(&participant_id) {
+            session.pending_share_request = None;
+        }
+    }
+    Ok(())
+}
+
+#[tauri::command]
 fn request_screen_share(
     state: State<AppState>,
     code: String,
@@ -379,6 +402,8 @@ fn main() {
             leave_session,
             get_participants,
             get_active_sharer,
+            get_pending_share_request,
+            cancel_share_request,
             request_screen_share,
             approve_share_request,
             reject_share_request,
