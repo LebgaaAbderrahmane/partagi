@@ -6,7 +6,9 @@ dist/
 target/
 
 # makepkg artifacts
-src/
+# NOTE: do not ignore src/ — that is the frontend source tree.
+# Run makepkg from a scratch dir, or clean up pkg/ + *.tar.gz after.
+pkg/
 *.tar.gz
 
 # IDE

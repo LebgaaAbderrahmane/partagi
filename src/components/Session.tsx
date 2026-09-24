@@ -1,6 +1,17 @@
 import { useEffect, useState, useRef, useCallback } from "react";
 import { QRCodeSVG } from "qrcode.react";
 import {
+  Eye,
+  Copy,
+  Check,
+  QrCode,
+  Mic,
+  MicOff,
+  ScreenShare,
+  ScreenShareOff,
+  LogOut,
+} from "lucide-react";
+import {
   leaveSession,
   startStream,
   stopStream,
@@ -19,6 +30,7 @@ import {
   type Participant,
   type Quality,
 } from "../lib/tauri-commands";
+import { Button, Modal, Avatar, Badge, useToast } from "./ui";
 
 interface SessionProps {
   roomCode: string;
@@ -35,10 +47,10 @@ export default function Session({
   streamUrl,
   onLeave,
 }: SessionProps) {
+  const { toast } = useToast();
   const [connected, setConnected] = useState(false);
   const [isSharing, setIsSharing] = useState(false);
   const [isMicOn, setIsMicOn] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const [viewerCopied, setViewerCopied] = useState(false);
   const viewerUrl = streamUrl.replace(/^ws:\/\//, "http://").replace(/:\d+$/, ":9002");
@@ -75,7 +87,6 @@ export default function Session({
 
     ws.onopen = () => {
       setConnected(true);
-      setError(null);
     };
 
     ws.onmessage = (event) => {
@@ -228,7 +239,7 @@ export default function Session({
         setShowMonitorPicker(true);
       }
     } catch (e) {
-      setError(String(e));
+      toast(String(e), "error");
     }
   };
 
@@ -244,7 +255,7 @@ export default function Session({
       setWaitingApproval(false);
       setShowMonitorPicker(false);
     } catch (e) {
-      setError(String(e));
+      toast(String(e), "error");
     }
   };
 
@@ -255,7 +266,7 @@ export default function Session({
         await stopStream();
         await startStream(selectedOutputRef.current || undefined, q);
       } catch (e) {
-        setError(String(e));
+        toast(String(e), "error");
       }
     }
   };
@@ -274,7 +285,7 @@ export default function Session({
       await approveShareRequest(roomCode, participantId);
       setPendingRequest(null);
     } catch (e) {
-      setError(String(e));
+      toast(String(e), "error");
     }
   };
 
@@ -283,7 +294,7 @@ export default function Session({
       await rejectShareRequest(roomCode, participantId);
       setPendingRequest(null);
     } catch (e) {
-      setError(String(e));
+      toast(String(e), "error");
     }
   };
 
@@ -298,7 +309,7 @@ export default function Session({
         setIsMicOn(true);
       }
     } catch (e) {
-      setError(String(e));
+      toast(String(e), "error");
     }
   };
 
@@ -328,285 +339,170 @@ export default function Session({
     setTimeout(() => setViewerCopied(false), 2000);
   };
 
+  const sharerName =
+    activeSharer != null
+      ? participants.find((p) => p.id === activeSharer)?.name ||
+        activeSharer.slice(0, 8)
+      : "";
+
+  const requesterName =
+    pendingRequest != null
+      ? participants.find((p) => p.id === pendingRequest)?.name ||
+        pendingRequest.slice(0, 8)
+      : "";
+
   return (
-    <div style={{ display: "flex", flexDirection: "column", height: "100vh" }}>
-      <header style={{
-        display: "flex",
-        justifyContent: "space-between",
-        alignItems: "center",
-        padding: "0.75rem 1.25rem",
-        borderBottom: "1px solid var(--border)",
-        background: "var(--surface)",
-      }}>
-        <div style={{ display: "flex", alignItems: "center", gap: "1rem" }}>
-          <span style={{ fontWeight: 600, fontSize: "0.95rem" }}>Partagi</span>
-          <span style={{ fontSize: "0.8rem", color: "var(--text-muted)" }}>
-            {displayName}
-          </span>
-          <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
-            <code style={{ fontSize: "0.8rem" }}>{roomCode}</code>
-            <button onClick={copyCode} style={{ padding: "0.25rem 0.5rem", fontSize: "0.75rem" }}>
+    <div className="session">
+      <header className="session-header">
+        <div className="row row-gap-lg">
+          <span className="session-brand">Partagi</span>
+          <span className="small muted">{displayName}</span>
+          <div className="row row-gap">
+            <code>{roomCode}</code>
+            <Button size="sm" onClick={copyCode}>
+              {copied ? <Check size={12} /> : <Copy size={12} />}
               {copied ? "Copied" : "Copy Code"}
-            </button>
+            </Button>
           </div>
-          <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
-            <code style={{ fontSize: "0.7rem", color: "var(--text-muted)" }}>{viewerUrl}</code>
-            <button onClick={copyViewerUrl} style={{ padding: "0.25rem 0.5rem", fontSize: "0.75rem" }}>
+          <div className="row row-gap">
+            <code className="caption muted">{viewerUrl}</code>
+            <Button size="sm" onClick={copyViewerUrl}>
+              {viewerCopied ? <Check size={12} /> : <Copy size={12} />}
               {viewerCopied ? "Copied" : "Copy Link"}
-            </button>
-            <button onClick={() => setShowQr(true)} style={{ padding: "0.25rem 0.5rem", fontSize: "0.75rem" }}>
+            </Button>
+            <Button size="sm" onClick={() => setShowQr(true)} aria-label="Show QR code">
+              <QrCode size={12} />
               QR
-            </button>
+            </Button>
           </div>
-          <div style={{
-            display: "flex",
-            alignItems: "center",
-            gap: "0.35rem",
-            fontSize: "0.75rem",
-            color: "var(--text-muted)",
-            background: "var(--bg)",
-            padding: "0.2rem 0.6rem",
-            borderRadius: 12,
-          }}>
-            <span style={{ fontSize: "0.85rem" }}>👁</span>
+          <div className="viewer-chip">
+            <Eye size={14} />
             {viewerCount} watching
           </div>
         </div>
-          <div style={{ display: "flex", alignItems: "center", gap: "0.35rem" }}>
-            <label style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>Quality</label>
+
+        <div className="row row-gap">
+          <div className="quality-select">
+            <label htmlFor="quality">Quality</label>
             <select
+              id="quality"
               value={quality}
               onChange={(e) => handleQualityChange(e.target.value as Quality)}
-              style={{
-                background: "var(--surface)",
-                border: "1px solid var(--border)",
-                borderRadius: "var(--radius)",
-                color: "var(--text)",
-                padding: "0.3rem 0.5rem",
-                fontSize: "0.8rem",
-                outline: "none",
-              }}
             >
               <option value="Low">Low</option>
               <option value="Balanced">Balanced</option>
               <option value="High">High</option>
             </select>
           </div>
-          <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
-          <button
-            className={isMicOn ? "primary" : ""}
+          <Button
+            variant={isMicOn ? "primary" : "default"}
+            size="md"
             onClick={handleToggleMic}
-            style={{ padding: "0.4rem 0.75rem", fontSize: "0.85rem" }}
           >
+            {isMicOn ? <Mic size={14} /> : <MicOff size={14} />}
             {isMicOn ? "Mic On" : "Mic Off"}
-          </button>
-          <button
-            className={isSharing ? "danger" : waitingApproval ? "" : "primary"}
+          </Button>
+          <Button
+            variant={isSharing ? "danger" : waitingApproval ? "default" : "primary"}
             onClick={handleShare}
           >
+            {isSharing ? <ScreenShareOff size={14} /> : <ScreenShare size={14} />}
             {isSharing
               ? "Stop Sharing"
               : waitingApproval
                 ? "Cancel Request"
                 : "Share Screen"}
-          </button>
-          <button className="danger" onClick={handleLeave}>Leave</button>
-          </div>
+          </Button>
+          <Button variant="danger" onClick={handleLeave}>
+            <LogOut size={14} />
+            Leave
+          </Button>
+        </div>
       </header>
 
-      <div style={{ flex: 1, display: "flex", overflow: "hidden" }}>
-        <div style={{ flex: 1, background: "#000", position: "relative" }}>
-          <canvas
-            ref={canvasRef}
-            style={{ width: "100%", height: "100%", objectFit: "contain" }}
-          />
+      <div className="session-body">
+        <div className="stage">
+          <canvas ref={canvasRef} />
+
           {!connected && (
-            <div style={{
-              position: "absolute",
-              top: "50%",
-              left: "50%",
-              transform: "translate(-50%, -50%)",
-              color: "var(--text-muted)",
-              textAlign: "center",
-            }}>
+            <div className="stage-overlay">
               <p>Connecting to stream server...</p>
             </div>
           )}
+
           {connected && activeSharer && activeSharer !== participantId && !showMonitorPicker && (
-            <div style={{
-              position: "absolute",
-              top: "50%",
-              left: "50%",
-              transform: "translate(-50%, -50%)",
-              color: "var(--text-muted)",
-              textAlign: "center",
-            }}>
-              <p>
-                {participants.find((p) => p.id === activeSharer)?.name ||
-                  activeSharer.slice(0, 8)}{" "}
-                is sharing their screen
-              </p>
+            <div className="stage-overlay">
+              <p>{sharerName} is sharing their screen</p>
               {waitingApproval ? (
-                <p style={{ fontSize: "0.8rem", color: "var(--accent)" }}>
-                  Waiting for approval to share...
-                </p>
+                <p className="accent">Waiting for approval to share...</p>
               ) : (
-                <p style={{ fontSize: "0.8rem" }}>
-                  Click "Share Screen" to request control
-                </p>
+                <p className="hint">Click "Share Screen" to request control</p>
               )}
             </div>
           )}
+
           {connected &&
             waitingApproval &&
             (!activeSharer || activeSharer === participantId) &&
             !showMonitorPicker && (
-            <div style={{
-              position: "absolute",
-              top: "50%",
-              left: "50%",
-              transform: "translate(-50%, -50%)",
-              color: "var(--text-muted)",
-              textAlign: "center",
-            }}>
-              <p>Request approved!</p>
-              <p style={{ fontSize: "0.8rem" }}>Choose a display to share</p>
-            </div>
-          )}
+              <div className="stage-overlay">
+                <p>Request approved!</p>
+                <p className="hint">Choose a display to share</p>
+              </div>
+            )}
+
           {connected &&
             isSharing &&
             pendingRequest &&
             pendingRequest !== participantId &&
             !showMonitorPicker && (
-            <div style={{
-              position: "absolute",
-              top: "50%",
-              left: "50%",
-              transform: "translate(-50%, -50%)",
-              background: "var(--surface)",
-              border: "1px solid var(--border)",
-              borderRadius: "var(--radius)",
-              padding: "1.5rem",
-              display: "flex",
-              flexDirection: "column",
-              gap: "1rem",
-              minWidth: 280,
-              textAlign: "center",
-            }}>
-              <p style={{ fontSize: "0.9rem", fontWeight: 600 }}>
-                {participants.find((p) => p.id === pendingRequest)?.name ||
-                  pendingRequest.slice(0, 8)}{" "}
-                wants to share their screen
-              </p>
-              <div style={{ display: "flex", gap: "0.5rem" }}>
-                <button onClick={handleReject} style={{ flex: 1 }}>
-                  Decline
-                </button>
-                <button className="primary" onClick={handleApprove} style={{ flex: 1 }}>
-                  Approve
-                </button>
+              <div className="card" style={{ position: "absolute", top: "50%", left: "50%", transform: "translate(-50%, -50%)" }}>
+                <p className="card-title">{requesterName} wants to share their screen</p>
+                <div className="row row-gap">
+                  <Button className="btn-flex" onClick={handleReject}>
+                    Decline
+                  </Button>
+                  <Button className="btn-flex" variant="primary" onClick={handleApprove}>
+                    Approve
+                  </Button>
+                </div>
               </div>
-            </div>
-          )}
+            )}
+
           {connected && !activeSharer && !isSharing && !showMonitorPicker && (
-            <div style={{
-              position: "absolute",
-              top: "50%",
-              left: "50%",
-              transform: "translate(-50%, -50%)",
-              color: "var(--text-muted)",
-              textAlign: "center",
-            }}>
+            <div className="stage-overlay">
               <p>No one is sharing their screen</p>
-              <p style={{ fontSize: "0.8rem" }}>Click "Share Screen" to get started</p>
+              <p className="hint">Click "Share Screen" to get started</p>
             </div>
           )}
+
           {connected && !audioUnlocked && activeSharer && activeSharer !== participantId && (
-            <button
-              onClick={unlockAudio}
-              style={{
-                position: "absolute",
-                bottom: 16,
-                left: "50%",
-                transform: "translateX(-50%)",
-                background: "var(--accent)",
-                border: "none",
-                color: "white",
-                padding: "0.5rem 1rem",
-                borderRadius: "var(--radius)",
-                fontSize: "0.85rem",
-              }}
-            >
+            <button className="audio-unlock" onClick={unlockAudio}>
               Tap to hear audio
             </button>
           )}
-          {showQr && (
-            <div
-              style={{
-                position: "fixed",
-                inset: 0,
-                background: "rgba(0,0,0,0.7)",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                zIndex: 200,
-              }}
-              onClick={() => setShowQr(false)}
-            >
-              <div
-                style={{
-                  background: "var(--surface)",
-                  border: "1px solid var(--border)",
-                  borderRadius: "var(--radius-lg)",
-                  padding: "2rem",
-                  display: "flex",
-                  flexDirection: "column",
-                  alignItems: "center",
-                  gap: "1rem",
-                }}
-                onClick={(e) => e.stopPropagation()}
-              >
-                <p style={{ fontSize: "0.9rem", fontWeight: 600 }}>Scan to view on mobile</p>
-                <div style={{ background: "white", padding: "1rem", borderRadius: "var(--radius)" }}>
-                  <QRCodeSVG value={viewerUrl} size={200} />
-                </div>
-                <code style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>{viewerUrl}</code>
-                <button onClick={() => setShowQr(false)}>Close</button>
+
+          <Modal open={showQr} onClose={() => setShowQr(false)} title="Scan to view on mobile">
+            <div className="qr-panel" style={{ border: "none", padding: 0, background: "transparent" }}>
+              <div className="qr-code">
+                <QRCodeSVG value={viewerUrl} size={200} />
               </div>
+              <code className="caption muted">{viewerUrl}</code>
             </div>
-          )}
+          </Modal>
+
           {showMonitorPicker && (
-            <div style={{
-              position: "absolute",
-              top: "50%",
-              left: "50%",
-              transform: "translate(-50%, -50%)",
-              background: "var(--surface)",
-              border: "1px solid var(--border)",
-              borderRadius: "var(--radius)",
-              padding: "1.5rem",
-              display: "flex",
-              flexDirection: "column",
-              gap: "1rem",
-              minWidth: 280,
-            }}>
-              <p style={{ fontSize: "0.9rem", fontWeight: 600 }}>Select Display</p>
+            <div
+              className="card"
+              style={{ position: "absolute", top: "50%", left: "50%", transform: "translate(-50%, -50%)" }}
+            >
+              <p className="card-title">Select Display</p>
               {outputs.length > 0 ? (
-                <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+                <div className="option-list">
                   {outputs.map((o) => (
                     <label
                       key={o}
-                      style={{
-                        display: "flex",
-                        alignItems: "center",
-                        gap: "0.5rem",
-                        padding: "0.5rem 0.75rem",
-                        borderRadius: "var(--radius)",
-                        border: selectedOutput === o ? "1px solid var(--primary)" : "1px solid var(--border)",
-                        background: selectedOutput === o ? "rgba(59,130,246,0.1)" : "var(--bg)",
-                        cursor: "pointer",
-                        fontSize: "0.85rem",
-                      }}
+                      className={`option-item ${selectedOutput === o ? "option-item-selected" : ""}`}
                     >
                       <input
                         type="radio"
@@ -614,139 +510,59 @@ export default function Session({
                         value={o}
                         checked={selectedOutput === o}
                         onChange={() => setSelectedOutput(o)}
-                        style={{ width: "auto" }}
                       />
                       {o}
                     </label>
                   ))}
                 </div>
               ) : (
-                <p style={{ fontSize: "0.8rem", color: "var(--text-muted)" }}>No displays found</p>
+                <p className="caption">No displays found</p>
               )}
-              <div style={{ display: "flex", gap: "0.5rem" }}>
-                <button onClick={handleCancelShare} style={{ flex: 1 }}>
+              <div className="row row-gap">
+                <Button className="btn-flex" onClick={handleCancelShare}>
                   Cancel
-                </button>
-                <button className="primary" onClick={handleStartShare} style={{ flex: 1 }}>
+                </Button>
+                <Button className="btn-flex" variant="primary" onClick={handleStartShare}>
                   Start Sharing
-                </button>
+                </Button>
               </div>
             </div>
           )}
         </div>
 
-        <aside style={{
-          width: 220,
-          background: "var(--surface)",
-          borderLeft: "1px solid var(--border)",
-          padding: "1rem",
-          display: "flex",
-          flexDirection: "column",
-          gap: "0.75rem",
-          overflow: "auto",
-        }}>
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-            <h3 style={{ fontSize: "0.85rem", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em", color: "var(--text-muted)" }}>
-              Participants
-            </h3>
-            <span style={{ fontSize: "0.75rem", color: "var(--text-muted)", background: "var(--bg)", padding: "0.15rem 0.5rem", borderRadius: 12 }}>
-              {participants.length}
-            </span>
+        <aside className="aside">
+          <div className="aside-header">
+            <h3 className="aside-title">Participants</h3>
+            <span className="badge">{participants.length}</span>
           </div>
 
-          <ul style={{ listStyle: "none", display: "flex", flexDirection: "column", gap: "0.25rem" }}>
+          <ul className="participant-list">
             {participants.map((p) => (
-              <li key={p.id} style={{
-                display: "flex",
-                alignItems: "center",
-                gap: "0.5rem",
-                padding: "0.4rem 0.5rem",
-                borderRadius: "var(--radius)",
-                background: p.id === participantId ? "var(--bg)" : "transparent",
-              }}>
-                <div style={{
-                  width: 24,
-                  height: 24,
-                  borderRadius: "50%",
-                  background: p.id === participantId ? "var(--accent)" : "var(--border)",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  fontSize: "0.7rem",
-                  fontWeight: 600,
-                  color: p.id === participantId ? "white" : "var(--text-muted)",
-                  flexShrink: 0,
-                }}>
-                  {p.name.slice(0, 2).toUpperCase()}
-                </div>
-                <span style={{ fontSize: "0.85rem", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+              <li
+                key={p.id}
+                className={`participant ${p.id === participantId ? "participant-self" : ""}`}
+              >
+                <Avatar name={p.name} active={p.id === participantId} />
+                <span className="participant-name">
                   {p.name}
                   {p.id === participantId && (
-                    <span style={{ color: "var(--text-muted)", fontSize: "0.75rem" }}> (you)</span>
+                    <span className="participant-self-label"> (you)</span>
                   )}
                 </span>
-                {activeSharer === p.id && (
-                  <span style={{
-                    fontSize: "0.65rem",
-                    color: "var(--success)",
-                    background: "rgba(34,197,94,0.15)",
-                    padding: "0.1rem 0.4rem",
-                    borderRadius: 8,
-                    fontWeight: 600,
-                    textTransform: "uppercase",
-                    letterSpacing: "0.03em",
-                  }}>
-                    sharing
-                  </span>
-                )}
+                {activeSharer === p.id && <Badge variant="success">sharing</Badge>}
               </li>
             ))}
           </ul>
 
-          <div style={{
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
-            padding: "0.4rem 0.75rem",
-            background: "var(--bg)",
-            borderRadius: "var(--radius)",
-            fontSize: "0.75rem",
-            color: "var(--text-muted)",
-          }}>
+          <div className="status-bar">
             <span>{connected ? "Connected to server" : "Connecting..."}</span>
-            <span style={{
-              display: "flex",
-              alignItems: "center",
-              gap: "0.35rem",
-            }}>
-              <span style={{
-                width: 8,
-                height: 8,
-                borderRadius: "50%",
-                background: activeSharer ? "var(--success)" : "var(--text-muted)",
-              }} />
+            <span className="row row-gap-sm">
+              <span className={`status-dot ${activeSharer ? "status-dot-live" : ""}`} />
               {activeSharer ? "Sharing active" : "Idle"}
             </span>
           </div>
         </aside>
       </div>
-
-      {error && (
-        <div style={{
-          position: "fixed",
-          bottom: 16,
-          left: "50%",
-          transform: "translateX(-50%)",
-          background: "var(--danger)",
-          color: "white",
-          padding: "0.5rem 1rem",
-          borderRadius: "var(--radius)",
-          fontSize: "0.85rem",
-          zIndex: 100,
-        }}>
-          {error}
-        </div>
-      )}
     </div>
   );
 }

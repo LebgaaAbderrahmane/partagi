@@ -1,6 +1,7 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import Home from "./components/Home";
 import Session from "./components/Session";
+import { ToastProvider, useToast } from "./components/ui";
 import { joinSession } from "./lib/tauri-commands";
 
 type View = "home" | "session";
@@ -12,10 +13,10 @@ interface SessionState {
   streamUrl: string;
 }
 
-export default function App() {
+function App() {
+  const { toast } = useToast();
   const [view, setView] = useState<View>("home");
   const [session, setSession] = useState<SessionState | null>(null);
-  const [error, setError] = useState<string | null>(null);
 
   const startSession = async (
     code: string,
@@ -32,37 +33,13 @@ export default function App() {
       });
       setView("session");
     } catch (e) {
-      setError(String(e));
+      toast(String(e), "error");
     }
   };
 
-  useEffect(() => {
-    if (error) {
-      const t = setTimeout(() => setError(null), 5000);
-      return () => clearTimeout(t);
-    }
-  }, [error]);
-
   return (
     <div style={{ height: "100vh", width: "100vw" }}>
-      {error && (
-        <div style={{
-          position: "fixed",
-          top: 16,
-          right: 16,
-          background: "var(--danger)",
-          color: "white",
-          padding: "0.75rem 1rem",
-          borderRadius: "var(--radius)",
-          fontSize: "0.85rem",
-          zIndex: 2000,
-        }}>
-          {error}
-        </div>
-      )}
-      {view === "home" && (
-        <Home onJoinSession={startSession} />
-      )}
+      {view === "home" && <Home onJoinSession={startSession} />}
       {view === "session" && session && (
         <Session
           roomCode={session.code}
@@ -76,5 +53,13 @@ export default function App() {
         />
       )}
     </div>
+  );
+}
+
+export default function Root() {
+  return (
+    <ToastProvider>
+      <App />
+    </ToastProvider>
   );
 }
