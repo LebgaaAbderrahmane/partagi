@@ -19,12 +19,44 @@ const VIEWER_HTML: &str = include_str!("../viewer.html");
 const SESSION_TTL: Duration = Duration::from_secs(30 * 60);
 const CODE_LEN: usize = 12;
 
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "lowercase")]
+enum NetworkMode {
+    #[default]
+    Lan,
+    Remote,
+}
+
+#[derive(Clone, Serialize, Deserialize)]
+struct NetworkConfig {
+    mode: NetworkMode,
+    public_host: Option<String>,
+}
+
+impl Default for NetworkConfig {
+    fn default() -> Self {
+        Self {
+            mode: NetworkMode::Lan,
+            public_host: None,
+        }
+    }
+}
+
+#[derive(Serialize)]
+struct NetworkInfo {
+    mode: NetworkMode,
+    lan_ip: String,
+    public_host: Option<String>,
+    remote_ready: bool,
+}
+
 struct AppState {
     sessions: Arc<Mutex<HashMap<String, Session>>>,
     broadcasters: Arc<Mutex<HashMap<String, stream::FrameBroadcaster>>>,
     capture: Mutex<stream::ScreenCapture>,
     mic: Mutex<stream::MicCapture>,
     viewer_count: Arc<AtomicUsize>,
+    network: Mutex<NetworkConfig>,
 }
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -72,13 +104,21 @@ fn get_local_ip() -> String {
         .unwrap_or_else(|_| "127.0.0.1".to_string())
 }
 
-fn stream_url_for(code: &str) -> String {
-    format!(
-        "ws://{}:{}?room={}",
-        get_local_ip(),
-        STREAM_PORT,
-        code
-    )
+fn active_host(cfg: &NetworkConfig) -> String {
+    match cfg.mode {
+        NetworkMode::Lan => get_local_ip(),
+        NetworkMode::Remote => cfg
+            .public_host
+            .as_deref()
+            .map(str::trim)
+            .filter(|h| !h.is_empty())
+            .map(|h| h.to_string())
+            .unwrap_or_else(get_local_ip),
+    }
+}
+
+fn stream_url_for(code: &str, host: &str) -> String {
+    format!("ws://{}:{}?room={}", host, STREAM_PORT, code)
 }
 
 fn ensure_member(session: &Session, participant_id: &str) -> Result<(), String> {
@@ -94,8 +134,53 @@ fn touch(session: &mut Session) {
 }
 
 #[tauri::command]
-fn get_stream_url() -> String {
-    format!("ws://{}:{}", get_local_ip(), STREAM_PORT)
+fn get_stream_url(state: State<AppState>) -> String {
+    let cfg = state.network.blocking_lock();
+    format!("ws://{}:{}", active_host(&cfg), STREAM_PORT)
+}
+
+#[tauri::command]
+fn get_network_info(state: State<AppState>) -> NetworkInfo {
+    let cfg = state.network.blocking_lock();
+    let lan_ip = get_local_ip();
+    let public_host = cfg.public_host.clone();
+    let remote_ready = matches!(cfg.mode, NetworkMode::Remote)
+        && public_host
+            .as_deref()
+            .map(|h| !h.trim().is_empty())
+            .unwrap_or(false);
+    NetworkInfo {
+        mode: cfg.mode,
+        lan_ip,
+        public_host,
+        remote_ready,
+    }
+}
+
+#[tauri::command]
+fn set_network_mode(
+    state: State<AppState>,
+    mode: NetworkMode,
+    public_host: Option<String>,
+) -> NetworkInfo {
+    let mut cfg = state.network.blocking_lock();
+    cfg.mode = mode;
+    cfg.public_host = public_host
+        .map(|h| h.trim().to_string())
+        .filter(|h| !h.is_empty());
+    let lan_ip = get_local_ip();
+    let public_host = cfg.public_host.clone();
+    let remote_ready = matches!(cfg.mode, NetworkMode::Remote)
+        && public_host
+            .as_deref()
+            .map(|h| !h.trim().is_empty())
+            .unwrap_or(false);
+    NetworkInfo {
+        mode: cfg.mode,
+        lan_ip,
+        public_host,
+        remote_ready,
+    }
 }
 
 #[tauri::command]
@@ -146,7 +231,11 @@ fn join_session(
             });
         }
         touch(session);
-        stream_url = stream_url_for(&session.code);
+        let host = {
+            let cfg = state.network.blocking_lock();
+            active_host(&cfg)
+        };
+        stream_url = stream_url_for(&session.code, &host);
     }
 
     let mut broadcasters = state.broadcasters.blocking_lock();
@@ -599,6 +688,7 @@ fn main() {
             capture: Mutex::new(stream::ScreenCapture::new()),
             mic: Mutex::new(stream::MicCapture::new()),
             viewer_count,
+            network: Mutex::new(NetworkConfig::default()),
         })
         .setup(move |_app| {
             tauri::async_runtime::spawn(run_stream_server(
@@ -630,6 +720,8 @@ fn main() {
             start_mic,
             stop_mic,
             get_stream_url,
+            get_network_info,
+            set_network_mode,
             list_outputs,
             get_viewer_count,
         ])

@@ -1,7 +1,13 @@
 import { useState, useEffect } from "react";
-import { createSession } from "../lib/tauri-commands";
+import {
+  createSession,
+  getNetworkInfo,
+  setNetworkMode,
+  type NetworkInfo,
+  type NetworkMode,
+} from "../lib/tauri-commands";
 import { Button } from "./ui";
-import { History } from "lucide-react";
+import { History, Globe, Wifi, ExternalLink } from "lucide-react";
 
 interface HomeProps {
   onJoinSession: (
@@ -46,6 +52,20 @@ export default function Home({ onJoinSession }: HomeProps) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [recent, setRecent] = useState<string[]>(loadRecent);
+  const [network, setNetwork] = useState<NetworkInfo | null>(null);
+  const [publicHost, setPublicHost] = useState("");
+  const [showNetwork, setShowNetwork] = useState(false);
+  const [detectingIp, setDetectingIp] = useState(false);
+
+  useEffect(() => {
+    getNetworkInfo()
+      .then((info) => {
+        setNetwork(info);
+        setPublicHost(info.public_host || "");
+        if (info.mode === "remote") setShowNetwork(true);
+      })
+      .catch(() => {});
+  }, []);
 
   useEffect(() => {
     if (rememberMe) {
@@ -58,6 +78,45 @@ export default function Home({ onJoinSession }: HomeProps) {
   }, [rememberMe, participantId, displayName]);
 
   const getName = () => displayName.trim() || "Guest";
+
+  const applyNetwork = async (mode: NetworkMode, host: string) => {
+    try {
+      const info = await setNetworkMode(mode, host);
+      setNetwork(info);
+      setPublicHost(info.public_host || host);
+    } catch (e) {
+      setError(String(e));
+    }
+  };
+
+  const handleModeChange = async (mode: NetworkMode) => {
+    await applyNetwork(mode, publicHost);
+  };
+
+  const handlePublicHostBlur = async () => {
+    if (network && network.mode === "remote") {
+      await applyNetwork("remote", publicHost);
+    }
+  };
+
+  const handleDetectIp = async () => {
+    setDetectingIp(true);
+    setError(null);
+    try {
+      const res = await fetch("https://api.ipify.org?format=json");
+      const data = (await res.json()) as { ip?: string };
+      if (data.ip) {
+        setPublicHost(data.ip);
+        await applyNetwork("remote", data.ip);
+      } else {
+        setError("Could not detect public IP");
+      }
+    } catch {
+      setError("Could not detect public IP — enter it manually");
+    } finally {
+      setDetectingIp(false);
+    }
+  };
 
   const handleCreate = async () => {
     setLoading(true);
@@ -97,6 +156,9 @@ export default function Home({ onJoinSession }: HomeProps) {
     setError(null);
     onJoinSession(code, participantId, getName());
   };
+
+  const mode = network?.mode ?? "lan";
+  const remoteReady = network?.remote_ready ?? false;
 
   return (
     <div className="home">
@@ -143,6 +205,7 @@ export default function Home({ onJoinSession }: HomeProps) {
             className="room-input"
             type="text"
             placeholder="Enter room code"
+            aria-label="Room code"
             value={joinCode}
             onChange={(e) => setJoinCode(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && handleJoin()}
@@ -150,6 +213,101 @@ export default function Home({ onJoinSession }: HomeProps) {
           <Button onClick={handleJoin} disabled={loading || !joinCode.trim()}>
             Join
           </Button>
+        </div>
+
+        <div className="network-section">
+          <button
+            type="button"
+            className="network-toggle"
+            onClick={() => setShowNetwork((v) => !v)}
+            aria-expanded={showNetwork}
+          >
+            <span className="row row-gap-sm">
+              {mode === "remote" ? <Globe size={14} /> : <Wifi size={14} />}
+              Network: {mode === "remote" ? "Remote" : "LAN"}
+              {mode === "remote" && !remoteReady && (
+                <span className="badge badge-warning">setup needed</span>
+              )}
+            </span>
+            <span className="network-chevron">{showNetwork ? "▾" : "▸"}</span>
+          </button>
+
+          {showNetwork && (
+            <div className="network-panel">
+              <div className="network-modes" role="radiogroup" aria-label="Network mode">
+                <label className={`network-mode ${mode === "lan" ? "network-mode-active" : ""}`}>
+                  <input
+                    type="radio"
+                    name="network-mode"
+                    value="lan"
+                    checked={mode === "lan"}
+                    onChange={() => handleModeChange("lan")}
+                  />
+                  <span>
+                    <strong>LAN</strong>
+                    <span className="caption muted">Same local network only</span>
+                  </span>
+                </label>
+                <label className={`network-mode ${mode === "remote" ? "network-mode-active" : ""}`}>
+                  <input
+                    type="radio"
+                    name="network-mode"
+                    value="remote"
+                    checked={mode === "remote"}
+                    onChange={() => handleModeChange("remote")}
+                  />
+                  <span>
+                    <strong>Remote</strong>
+                    <span className="caption muted">Over the internet via port forwarding</span>
+                  </span>
+                </label>
+              </div>
+
+              {mode === "remote" && (
+                <div className="field">
+                  <label htmlFor="public-host">Public IP or hostname</label>
+                  <div className="row row-gap">
+                    <input
+                      id="public-host"
+                      type="text"
+                      placeholder="e.g. 203.0.113.10 or home.example.com"
+                      value={publicHost}
+                      onChange={(e) => setPublicHost(e.target.value)}
+                      onBlur={handlePublicHostBlur}
+                      onKeyDown={(e) =>
+                        e.key === "Enter" && handlePublicHostBlur()
+                      }
+                    />
+                    <Button
+                      size="sm"
+                      onClick={handleDetectIp}
+                      disabled={detectingIp}
+                    >
+                      {detectingIp ? "Detecting…" : "Detect"}
+                    </Button>
+                  </div>
+                  <p className="caption muted network-help">
+                    Forward router ports <code>9001</code> (stream) and{" "}
+                    <code>9002</code> (viewer) to this machine. Links and QR codes
+                    will use this host so teammates can join from anywhere.
+                    <a
+                      className="network-docs"
+                      href="https://github.com/LebgaaAbderrahmane/partagi/blob/main/docs/remote.md"
+                      target="_blank"
+                      rel="noreferrer"
+                    >
+                      Remote setup guide <ExternalLink size={11} />
+                    </a>
+                  </p>
+                  {network?.lan_ip && (
+                    <p className="caption muted">
+                      This machine LAN IP: <code>{network.lan_ip}</code>
+                    </p>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
         </div>
       </div>
 

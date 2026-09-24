@@ -144,6 +144,31 @@ export async function getStreamUrl(): Promise<string> {
   return invoke("get_stream_url");
 }
 
+export type NetworkMode = "lan" | "remote";
+
+export interface NetworkInfo {
+  mode: NetworkMode;
+  lan_ip: string;
+  public_host: string | null;
+  remote_ready: boolean;
+}
+
+export async function getNetworkInfo(): Promise<NetworkInfo> {
+  assertTauri();
+  return invoke("get_network_info");
+}
+
+export async function setNetworkMode(
+  mode: NetworkMode,
+  publicHost?: string,
+): Promise<NetworkInfo> {
+  assertTauri();
+  return invoke("set_network_mode", {
+    mode,
+    publicHost: publicHost ?? null,
+  });
+}
+
 export async function listOutputs(): Promise<string[]> {
   assertTauri();
   return invoke("list_outputs");
