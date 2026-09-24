@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { createSession } from "../lib/tauri-commands";
+import { Button } from "./ui";
 
 interface HomeProps {
   onJoinSession: (
@@ -67,62 +68,61 @@ export default function Home({ onJoinSession }: HomeProps) {
   };
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", height: "100vh", gap: "2rem" }}>
-      <div style={{ textAlign: "center" }}>
-        <h1 style={{ fontSize: "2rem", fontWeight: 700, marginBottom: "0.5rem" }}>Partagi</h1>
-        <p style={{ color: "var(--text-muted)", fontSize: "0.9rem" }}>
-          Lightweight screen sharing for small teams
-        </p>
+    <div className="home">
+      <div className="home-brand">
+        <h1>Partagi</h1>
+        <p>Lightweight screen sharing for small teams</p>
       </div>
 
-      <div style={{ display: "flex", flexDirection: "column", gap: "1rem", width: 320 }}>
-        <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
-          <label style={{ fontSize: "0.8rem", color: "var(--text-muted)" }}>Your Name</label>
+      <div className="home-card">
+        <div className="field">
+          <label htmlFor="name">Your Name</label>
           <input
+            id="name"
             type="text"
             placeholder="Enter your name (optional)"
             value={displayName}
             onChange={(e) => setDisplayName(e.target.value)}
           />
-          <label style={{ display: "flex", alignItems: "center", gap: "0.5rem", fontSize: "0.8rem", color: "var(--text-muted)", cursor: "pointer" }}>
+          <label className="checkbox-label">
             <input
               type="checkbox"
               checked={rememberMe}
               onChange={(e) => setRememberMe(e.target.checked)}
-              style={{ width: "auto" }}
             />
             Remember me
           </label>
         </div>
 
-        <button className="primary" onClick={handleCreate} disabled={loading} style={{ padding: "0.75rem", fontSize: "1rem" }}>
+        <Button
+          variant="primary"
+          size="lg"
+          onClick={handleCreate}
+          disabled={loading}
+        >
           {loading ? "Creating..." : "New Session"}
-        </button>
+        </Button>
 
-        <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
-          <div style={{ flex: 1, height: 1, background: "var(--border)" }} />
-          <span style={{ color: "var(--text-muted)", fontSize: "0.75rem", textTransform: "uppercase", letterSpacing: "0.05em" }}>or</span>
-          <div style={{ flex: 1, height: 1, background: "var(--border)" }} />
+        <div className="divider">
+          <span>or</span>
         </div>
 
-        <div style={{ display: "flex", gap: "0.5rem" }}>
+        <div className="row row-gap">
           <input
+            className="room-input"
             type="text"
             placeholder="Enter room code"
             value={joinCode}
             onChange={(e) => setJoinCode(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && handleJoin()}
-            style={{ flex: 1, textTransform: "uppercase", letterSpacing: "0.1em" }}
           />
-          <button onClick={handleJoin} disabled={loading || !joinCode.trim()}>
+          <Button onClick={handleJoin} disabled={loading || !joinCode.trim()}>
             Join
-          </button>
+          </Button>
         </div>
       </div>
 
-      {error && (
-        <p style={{ color: "var(--danger)", fontSize: "0.85rem" }}>{error}</p>
-      )}
+      {error && <p className="error-text">{error}</p>}
     </div>
   );
 }
