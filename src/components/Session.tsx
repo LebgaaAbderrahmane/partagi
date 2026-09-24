@@ -641,10 +641,18 @@ export default function Session({
 
       <div className="session-body">
         <div className="stage">
-          <canvas ref={canvasRef} />
+          <canvas
+            ref={canvasRef}
+            role="img"
+            aria-label={
+              activeSharer && activeSharer !== participantId
+                ? "Live shared screen"
+                : "Shared screen preview"
+            }
+          />
 
           {showStats && (
-            <div className="stats-overlay">
+            <div className="stats-overlay" aria-hidden="true">
               <div className="stat-row">
                 <span>FPS</span>
                 <span className="stat-value">{fps}</span>

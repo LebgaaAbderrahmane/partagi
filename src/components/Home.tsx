@@ -326,7 +326,11 @@ export default function Home({ onJoinSession }: HomeProps) {
         </div>
       </div>
 
-      {error && <p className="error-text">{error}</p>}
+      {error && (
+        <p className="error-text" role="alert">
+          {error}
+        </p>
+      )}
 
       {recent.length > 0 && (
         <div className="recent-sessions">

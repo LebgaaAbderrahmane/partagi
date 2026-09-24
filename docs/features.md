@@ -104,7 +104,14 @@ Shortcuts are disabled while typing in inputs and while modals/pickers are open.
 
 ## Leave confirmation
 
-**Leave** / `Shift+Q` opens a modal (Stay / Leave). Leaving stops stream and mic, closes WS, and notifies the backend.
+**Leave** / `Shift+Q` opens a modal (Stay / Leave). Leaving stops stream and mic, closes WS, and notifies the backend. Modal is `role="dialog"` with focus trap, `aria-labelledby`, Escape, and restore-focus on close.
+
+## Accessibility notes
+
+- Focus-visible outlines on buttons, inputs, selects, and viewer controls
+- Muted text uses `#a3a3a3` (WCAG AA on dark surfaces); error text `#f87171`
+- Stage overlays use `role="status"` / `role="alert"`; toasts are `aria-live="polite"`
+- Shared-screen canvas has `role="img"` + label; viewer zoom is allowed (no `user-scalable=no`)
 
 ## Quality presets
 
