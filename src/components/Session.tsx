@@ -8,9 +8,12 @@ import {
   listOutputs,
   getParticipants,
   getActiveSharer,
+  getPendingShareRequest,
   requestScreenShare,
+  approveShareRequest,
+  rejectShareRequest,
+  cancelShareRequest,
   stopSharing,
-  takeoverShare,
   type Participant,
 } from "../lib/tauri-commands";
 
@@ -43,6 +46,8 @@ export default function Session({
 
   const [participants, setParticipants] = useState<Participant[]>([]);
   const [activeSharer, setActiveSharer] = useState<string | null>(null);
+  const [pendingRequest, setPendingRequest] = useState<string | null>(null);
+  const [waitingApproval, setWaitingApproval] = useState(false);
   const [audioUnlocked, setAudioUnlocked] = useState(false);
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -50,6 +55,7 @@ export default function Session({
   const retryRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const audioCtxRef = useRef<AudioContext | null>(null);
+  const isSharingRef = useRef(false);
 
   const connectWs = useCallback(() => {
     const ws = new WebSocket(streamUrl);
@@ -134,22 +140,32 @@ export default function Session({
   useEffect(() => {
     pollRef.current = setInterval(async () => {
       try {
-        const [p, sharer] = await Promise.all([
+        const [p, sharer, pending] = await Promise.all([
           getParticipants(roomCode),
           getActiveSharer(roomCode),
+          getPendingShareRequest(roomCode),
         ]);
         setParticipants(p);
         setActiveSharer(sharer);
-        setIsSharing((cur) => {
-          if (!cur) return cur;
-          return sharer === participantId ? cur : false;
-        });
+        setPendingRequest(pending);
+
+        if (waitingApproval && sharer === participantId) {
+          setWaitingApproval(false);
+          await loadOutputs();
+          setShowMonitorPicker(true);
+        }
+
+        if (isSharingRef.current && sharer !== participantId) {
+          isSharingRef.current = false;
+          setIsSharing(false);
+          stopStream().catch(() => {});
+        }
       } catch {}
     }, 2000);
     return () => {
       if (pollRef.current) clearInterval(pollRef.current);
     };
-  }, [roomCode, participantId]);
+  }, [roomCode, participantId, waitingApproval]);
 
   const unlockAudio = async () => {
     const ctx = audioCtxRef.current;
@@ -180,12 +196,19 @@ export default function Session({
         await stopStream();
         await stopSharing(roomCode, participantId);
         setIsSharing(false);
+        isSharingRef.current = false;
         setActiveSharer(null);
+      } else if (waitingApproval) {
+        await cancelShareRequest(roomCode, participantId);
+        setWaitingApproval(false);
       } else if (activeSharer && activeSharer !== participantId) {
-        await takeoverShare(roomCode, participantId);
-        await startStream(selectedOutput || undefined);
-        setIsSharing(true);
-        setActiveSharer(participantId);
+        const res = await requestScreenShare(roomCode, participantId);
+        if (res.needs_approval) {
+          setWaitingApproval(true);
+        } else {
+          await loadOutputs();
+          setShowMonitorPicker(true);
+        }
       } else {
         await loadOutputs();
         setShowMonitorPicker(true);
@@ -202,7 +225,9 @@ export default function Session({
       }
       await startStream(selectedOutput || undefined);
       setIsSharing(true);
+      isSharingRef.current = true;
       setActiveSharer(participantId);
+      setWaitingApproval(false);
       setShowMonitorPicker(false);
     } catch (e) {
       setError(String(e));
@@ -211,6 +236,29 @@ export default function Session({
 
   const handleCancelShare = () => {
     setShowMonitorPicker(false);
+  };
+
+  const handleApprove = async () => {
+    try {
+      if (isSharing) {
+        await stopStream();
+        setIsSharing(false);
+        isSharingRef.current = false;
+      }
+      await approveShareRequest(roomCode, participantId);
+      setPendingRequest(null);
+    } catch (e) {
+      setError(String(e));
+    }
+  };
+
+  const handleReject = async () => {
+    try {
+      await rejectShareRequest(roomCode, participantId);
+      setPendingRequest(null);
+    } catch (e) {
+      setError(String(e));
+    }
   };
 
   const handleToggleMic = async () => {
@@ -290,8 +338,15 @@ export default function Session({
           >
             {isMicOn ? "Mic On" : "Mic Off"}
           </button>
-          <button className={isSharing ? "danger" : "primary"} onClick={handleShare}>
-            {isSharing ? "Stop Sharing" : "Share Screen"}
+          <button
+            className={isSharing ? "danger" : waitingApproval ? "" : "primary"}
+            onClick={handleShare}
+          >
+            {isSharing
+              ? "Stop Sharing"
+              : waitingApproval
+                ? "Cancel Request"
+                : "Share Screen"}
           </button>
           <button className="danger" onClick={handleLeave}>Leave</button>
         </div>
@@ -329,7 +384,66 @@ export default function Session({
                   activeSharer.slice(0, 8)}{" "}
                 is sharing their screen
               </p>
-              <p style={{ fontSize: "0.8rem" }}>You can take over with "Share Screen"</p>
+              {waitingApproval ? (
+                <p style={{ fontSize: "0.8rem", color: "var(--accent)" }}>
+                  Waiting for approval to share...
+                </p>
+              ) : (
+                <p style={{ fontSize: "0.8rem" }}>
+                  Click "Share Screen" to request control
+                </p>
+              )}
+            </div>
+          )}
+          {connected &&
+            waitingApproval &&
+            (!activeSharer || activeSharer === participantId) &&
+            !showMonitorPicker && (
+            <div style={{
+              position: "absolute",
+              top: "50%",
+              left: "50%",
+              transform: "translate(-50%, -50%)",
+              color: "var(--text-muted)",
+              textAlign: "center",
+            }}>
+              <p>Request approved!</p>
+              <p style={{ fontSize: "0.8rem" }}>Choose a display to share</p>
+            </div>
+          )}
+          {connected &&
+            isSharing &&
+            pendingRequest &&
+            pendingRequest !== participantId &&
+            !showMonitorPicker && (
+            <div style={{
+              position: "absolute",
+              top: "50%",
+              left: "50%",
+              transform: "translate(-50%, -50%)",
+              background: "var(--surface)",
+              border: "1px solid var(--border)",
+              borderRadius: "var(--radius)",
+              padding: "1.5rem",
+              display: "flex",
+              flexDirection: "column",
+              gap: "1rem",
+              minWidth: 280,
+              textAlign: "center",
+            }}>
+              <p style={{ fontSize: "0.9rem", fontWeight: 600 }}>
+                {participants.find((p) => p.id === pendingRequest)?.name ||
+                  pendingRequest.slice(0, 8)}{" "}
+                wants to share their screen
+              </p>
+              <div style={{ display: "flex", gap: "0.5rem" }}>
+                <button onClick={handleReject} style={{ flex: 1 }}>
+                  Decline
+                </button>
+                <button className="primary" onClick={handleApprove} style={{ flex: 1 }}>
+                  Approve
+                </button>
+              </div>
             </div>
           )}
           {connected && !activeSharer && !isSharing && !showMonitorPicker && (
