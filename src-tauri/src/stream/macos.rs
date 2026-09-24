@@ -50,7 +50,12 @@ impl ScreenCapture {
                         let resized = if scale < 1.0 {
                             let w = (image.width() as f32 * scale) as u32;
                             let h = (image.height() as f32 * scale) as u32;
-                            image.resize(w, h, image::imageops::FilterType::Triangle)
+                            image::imageops::resize(
+                                &image,
+                                w,
+                                h,
+                                image::imageops::FilterType::Triangle,
+                            )
                         } else {
                             image
                         };
