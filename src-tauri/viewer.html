@@ -199,9 +199,15 @@
     let reconnectTimer = null;
     let frameCount = 0;
 
+    function getRoom() {
+      return new URLSearchParams(window.location.search).get('room') || '';
+    }
+
     function getWsUrl() {
       const host = window.location.hostname;
-      return 'ws://' + host + ':9001';
+      const room = getRoom();
+      const roomParam = room ? '?room=' + encodeURIComponent(room) : '';
+      return 'ws://' + host + ':9001' + roomParam;
     }
 
     function setStatus(state, text) {
