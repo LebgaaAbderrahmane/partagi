@@ -46,27 +46,27 @@ makepkg -si
 
 ### Fedora (.rpm)
 
-Download `Partagi_0.1.0-1.x86_64.rpm` from [Releases](https://github.com/LebgaaAbderrahmane/partagi/releases) then:
+Download `Partagi_0.2.0-1.x86_64.rpm` from [Releases](https://github.com/LebgaaAbderrahmane/partagi/releases) then:
 
 ```bash
-sudo rpm -i Partagi_0.1.0-1.x86_64.rpm
+sudo rpm -i Partagi_0.2.0-1.x86_64.rpm
 ```
 
 ### Debian / Ubuntu (.deb)
 
-Download `Partagi_0.1.0_amd64.deb` from [Releases](https://github.com/LebgaaAbderrahmane/partagi/releases) then:
+Download `Partagi_0.2.0_amd64.deb` from [Releases](https://github.com/LebgaaAbderrahmane/partagi/releases) then:
 
 ```bash
-sudo dpkg -i Partagi_0.1.0_amd64.deb
+sudo dpkg -i Partagi_0.2.0_amd64.deb
 ```
 
 ### macOS
 
-Download `Partagi_0.1.0_aarch64.dmg` from [Releases](https://github.com/LebgaaAbderrahmane/partagi/releases), open the .dmg, and drag Partagi to Applications.
+Download `Partagi_0.2.0_aarch64.dmg` from [Releases](https://github.com/LebgaaAbderrahmane/partagi/releases), open the .dmg, and drag Partagi to Applications.
 
 ### Windows
 
-Download `Partagi_0.1.0_x64-setup.exe` from [Releases](https://github.com/LebgaaAbderrahmane/partagi/releases) and run the installer.
+Download `Partagi_0.2.0_x64-setup.exe` from [Releases](https://github.com/LebgaaAbderrahmane/partagi/releases) and run the installer.
 
 ### Runtime dependencies (Linux)
 
