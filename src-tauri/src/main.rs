@@ -22,10 +22,16 @@ struct AppState {
 }
 
 #[derive(Clone, Serialize, Deserialize)]
+struct Participant {
+    id: String,
+    name: String,
+}
+
+#[derive(Clone, Serialize, Deserialize)]
 struct Session {
     code: String,
     created_by: String,
-    participants: Vec<String>,
+    participants: Vec<Participant>,
     active_sharer: Option<String>,
     pending_share_request: Option<String>,
 }
@@ -56,12 +62,19 @@ fn get_stream_url() -> String {
 }
 
 #[tauri::command]
-fn create_session(state: State<AppState>, creator_id: String) -> CreateSessionResponse {
+fn create_session(
+    state: State<AppState>,
+    creator_id: String,
+    display_name: String,
+) -> CreateSessionResponse {
     let code = Uuid::new_v4().to_string()[..8].to_string();
     let session = Session {
         code: code.clone(),
-        created_by: creator_id,
-        participants: vec![],
+        created_by: creator_id.clone(),
+        participants: vec![Participant {
+            id: creator_id,
+            name: display_name,
+        }],
         active_sharer: None,
         pending_share_request: None,
     };
@@ -74,14 +87,18 @@ fn join_session(
     state: State<AppState>,
     code: String,
     participant_id: String,
+    display_name: String,
 ) -> Result<JoinSessionResponse, String> {
     let mut sessions = state.sessions.blocking_lock();
     let session = sessions
         .get_mut(&code)
         .ok_or_else(|| "Session not found".to_string())?;
 
-    if !session.participants.contains(&participant_id) {
-        session.participants.push(participant_id.clone());
+    if !session.participants.iter().any(|p| p.id == participant_id) {
+        session.participants.push(Participant {
+            id: participant_id,
+            name: display_name,
+        });
     }
 
     let stream_url = format!("ws://{}:{}", get_local_ip(), STREAM_PORT);
@@ -100,7 +117,7 @@ fn leave_session(
 ) -> Result<(), String> {
     let mut sessions = state.sessions.blocking_lock();
     if let Some(session) = sessions.get_mut(&code) {
-        session.participants.retain(|p| p != &participant_id);
+        session.participants.retain(|p| p.id != participant_id);
         if session.active_sharer.as_deref() == Some(&participant_id) {
             session.active_sharer = None;
         }
@@ -115,7 +132,7 @@ fn leave_session(
 }
 
 #[tauri::command]
-fn get_participants(state: State<AppState>, code: String) -> Vec<String> {
+fn get_participants(state: State<AppState>, code: String) -> Vec<Participant> {
     let sessions = state.sessions.blocking_lock();
     sessions
         .get(&code)

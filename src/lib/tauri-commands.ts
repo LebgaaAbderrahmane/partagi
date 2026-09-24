@@ -15,6 +15,11 @@ export interface JoinSessionResponse {
   stream_url: string;
 }
 
+export interface Participant {
+  id: string;
+  name: string;
+}
+
 export interface RequestShareResponse {
   needs_approval: boolean;
   current_sharer: string;
@@ -22,17 +27,19 @@ export interface RequestShareResponse {
 
 export async function createSession(
   creatorId: string,
+  displayName: string,
 ): Promise<CreateSessionResponse> {
   assertTauri();
-  return invoke("create_session", { creatorId });
+  return invoke("create_session", { creatorId, displayName });
 }
 
 export async function joinSession(
   code: string,
   participantId: string,
+  displayName: string,
 ): Promise<JoinSessionResponse> {
   assertTauri();
-  return invoke("join_session", { code, participantId });
+  return invoke("join_session", { code, participantId, displayName });
 }
 
 export async function leaveSession(
@@ -43,7 +50,7 @@ export async function leaveSession(
   return invoke("leave_session", { code, participantId });
 }
 
-export async function getParticipants(code: string): Promise<string[]> {
+export async function getParticipants(code: string): Promise<Participant[]> {
   assertTauri();
   return invoke("get_participants", { code });
 }

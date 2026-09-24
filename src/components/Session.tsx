@@ -11,11 +11,13 @@ import {
   requestScreenShare,
   stopSharing,
   takeoverShare,
+  type Participant,
 } from "../lib/tauri-commands";
 
 interface SessionProps {
   roomCode: string;
   participantId: string;
+  displayName: string;
   streamUrl: string;
   onLeave: () => void;
 }
@@ -23,6 +25,7 @@ interface SessionProps {
 export default function Session({
   roomCode,
   participantId,
+  displayName,
   streamUrl,
   onLeave,
 }: SessionProps) {
@@ -38,7 +41,7 @@ export default function Session({
   const [selectedOutput, setSelectedOutput] = useState<string>("");
   const [showMonitorPicker, setShowMonitorPicker] = useState(false);
 
-  const [participants, setParticipants] = useState<string[]>([]);
+  const [participants, setParticipants] = useState<Participant[]>([]);
   const [activeSharer, setActiveSharer] = useState<string | null>(null);
   const [audioUnlocked, setAudioUnlocked] = useState(false);
 
@@ -263,6 +266,9 @@ export default function Session({
       }}>
         <div style={{ display: "flex", alignItems: "center", gap: "1rem" }}>
           <span style={{ fontWeight: 600, fontSize: "0.95rem" }}>Partagi</span>
+          <span style={{ fontSize: "0.8rem", color: "var(--text-muted)" }}>
+            {displayName}
+          </span>
           <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
             <code style={{ fontSize: "0.8rem" }}>{roomCode}</code>
             <button onClick={copyCode} style={{ padding: "0.25rem 0.5rem", fontSize: "0.75rem" }}>
@@ -318,7 +324,11 @@ export default function Session({
               color: "var(--text-muted)",
               textAlign: "center",
             }}>
-              <p>{activeSharer.slice(0, 8)} is sharing their screen</p>
+              <p>
+                {participants.find((p) => p.id === activeSharer)?.name ||
+                  activeSharer.slice(0, 8)}{" "}
+                is sharing their screen
+              </p>
               <p style={{ fontSize: "0.8rem" }}>You can take over with "Share Screen"</p>
             </div>
           )}
@@ -435,20 +445,48 @@ export default function Session({
 
           <ul style={{ listStyle: "none", display: "flex", flexDirection: "column", gap: "0.25rem" }}>
             {participants.map((p) => (
-              <li key={p} style={{
+              <li key={p.id} style={{
                 display: "flex",
                 alignItems: "center",
                 gap: "0.5rem",
                 padding: "0.4rem 0.5rem",
                 borderRadius: "var(--radius)",
-                background: p === participantId ? "var(--bg)" : "transparent",
+                background: p.id === participantId ? "var(--bg)" : "transparent",
               }}>
-                <div style={{ width: 8, height: 8, borderRadius: "50%", background: "var(--success)" }} />
-                <span style={{ fontSize: "0.85rem", flex: 1 }}>
-                  {p.slice(0, 8)}{p === participantId ? " (you)" : ""}
+                <div style={{
+                  width: 24,
+                  height: 24,
+                  borderRadius: "50%",
+                  background: p.id === participantId ? "var(--accent)" : "var(--border)",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  fontSize: "0.7rem",
+                  fontWeight: 600,
+                  color: p.id === participantId ? "white" : "var(--text-muted)",
+                  flexShrink: 0,
+                }}>
+                  {p.name.slice(0, 2).toUpperCase()}
+                </div>
+                <span style={{ fontSize: "0.85rem", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  {p.name}
+                  {p.id === participantId && (
+                    <span style={{ color: "var(--text-muted)", fontSize: "0.75rem" }}> (you)</span>
+                  )}
                 </span>
-                {activeSharer === p && (
-                  <span style={{ fontSize: "0.7rem", color: "var(--success)" }}>sharing</span>
+                {activeSharer === p.id && (
+                  <span style={{
+                    fontSize: "0.65rem",
+                    color: "var(--success)",
+                    background: "rgba(34,197,94,0.15)",
+                    padding: "0.1rem 0.4rem",
+                    borderRadius: 8,
+                    fontWeight: 600,
+                    textTransform: "uppercase",
+                    letterSpacing: "0.03em",
+                  }}>
+                    sharing
+                  </span>
                 )}
               </li>
             ))}
