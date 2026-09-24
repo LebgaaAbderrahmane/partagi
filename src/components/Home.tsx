@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { createSession } from "../lib/tauri-commands";
 import { Button } from "./ui";
+import { History } from "lucide-react";
 
 interface HomeProps {
   onJoinSession: (
@@ -12,6 +13,24 @@ interface HomeProps {
 
 const STORAGE_KEY = "partagi-participant-id";
 const NAME_KEY = "partagi-display-name";
+const RECENT_KEY = "partagi-recent-sessions";
+
+function loadRecent(): string[] {
+  try {
+    const raw = localStorage.getItem(RECENT_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed.filter((c) => typeof c === "string") : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveRecent(code: string) {
+  const codeUpper = code.toUpperCase();
+  const next = [codeUpper, ...loadRecent().filter((c) => c !== codeUpper)].slice(0, 5);
+  localStorage.setItem(RECENT_KEY, JSON.stringify(next));
+}
 
 export default function Home({ onJoinSession }: HomeProps) {
   const [displayName, setDisplayName] = useState(
@@ -26,6 +45,7 @@ export default function Home({ onJoinSession }: HomeProps) {
   const [joinCode, setJoinCode] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [recent, setRecent] = useState<string[]>(loadRecent);
 
   useEffect(() => {
     if (rememberMe) {
@@ -45,6 +65,8 @@ export default function Home({ onJoinSession }: HomeProps) {
     try {
       const name = getName();
       const res = await createSession(participantId, name);
+      saveRecent(res.code);
+      setRecent(loadRecent());
       onJoinSession(res.code, participantId, name);
     } catch (e) {
       setError(String(e));
@@ -59,12 +81,21 @@ export default function Home({ onJoinSession }: HomeProps) {
     setLoading(true);
     setError(null);
     try {
+      saveRecent(code);
+      setRecent(loadRecent());
       onJoinSession(code, participantId, getName());
     } catch (e) {
       setError(String(e));
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleJoinRecent = (code: string) => {
+    setJoinCode(code);
+    setLoading(true);
+    setError(null);
+    onJoinSession(code, participantId, getName());
   };
 
   return (
@@ -123,6 +154,28 @@ export default function Home({ onJoinSession }: HomeProps) {
       </div>
 
       {error && <p className="error-text">{error}</p>}
+
+      {recent.length > 0 && (
+        <div className="recent-sessions">
+          <div className="section-label row row-gap-sm">
+            <History size={12} />
+            Recent
+          </div>
+          <div className="recent-list">
+            {recent.map((code) => (
+              <Button
+                key={code}
+                size="sm"
+                className="recent-chip"
+                onClick={() => handleJoinRecent(code)}
+                disabled={loading}
+              >
+                {code}
+              </Button>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

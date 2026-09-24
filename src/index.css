@@ -686,6 +686,111 @@ code {
   font-size: 0.85rem;
 }
 
+/* ——— Recent sessions ——— */
+.recent-sessions {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  width: 320px;
+}
+
+.recent-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.recent-chip {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  letter-spacing: 0.05em;
+}
+
+/* ——— Sidebar collapse ——— */
+.aside-collapsed {
+  width: 48px;
+  padding: 0.75rem 0.5rem;
+  align-items: center;
+}
+
+.aside-collapsed .aside-title,
+.aside-collapsed .participant-name,
+.aside-collapsed .participant-self-label,
+.aside-collapsed .status-bar,
+.aside-collapsed .badge {
+  display: none;
+}
+
+.aside-collapsed .aside-header {
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.aside-collapsed .participant {
+  justify-content: center;
+  padding: 0.35rem 0;
+}
+
+/* ——— Stats overlay ——— */
+.stats-overlay {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  background: rgba(0, 0, 0, 0.75);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 0.5rem 0.75rem;
+  font-size: 0.7rem;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  color: var(--text-muted);
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  pointer-events: none;
+  z-index: 5;
+  min-width: 120px;
+}
+
+.stats-overlay .stat-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.stats-overlay .stat-value {
+  color: var(--text);
+}
+
+/* ——— Mic level meter ——— */
+.mic-meter {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.mic-meter-track {
+  width: 48px;
+  height: 6px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.mic-meter-fill {
+  height: 100%;
+  background: var(--success);
+  border-radius: 2px;
+  transition: width 0.08s linear;
+}
+
+.mic-meter-fill.hot {
+  background: var(--warning);
+}
+
+.mic-meter-fill.peak {
+  background: var(--danger);
+}
+
 /* ——— Option list (monitor picker) ——— */
 .option-list {
   display: flex;

@@ -10,6 +10,9 @@ import {
   ScreenShare,
   ScreenShareOff,
   LogOut,
+  PanelLeftClose,
+  PanelLeftOpen,
+  Activity,
 } from "lucide-react";
 import {
   leaveSession,
@@ -68,6 +71,15 @@ export default function Session({
   const [viewerCount, setViewerCount] = useState(0);
   const [showQr, setShowQr] = useState(false);
   const [showLeaveConfirm, setShowLeaveConfirm] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(
+    () => localStorage.getItem("partagi-sidebar-collapsed") === "1",
+  );
+  const [showStats, setShowStats] = useState(
+    () => localStorage.getItem("partagi-show-stats") === "1",
+  );
+  const [fps, setFps] = useState(0);
+  const [resolution, setResolution] = useState("—");
+  const [micLevel, setMicLevel] = useState(0);
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const wsRef = useRef<WebSocket | null>(null);
@@ -75,12 +87,34 @@ export default function Session({
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const audioCtxRef = useRef<AudioContext | null>(null);
   const isSharingRef = useRef(false);
+  const isMicOnRef = useRef(false);
 
   const selectedOutputRef = useRef("");
   selectedOutputRef.current = selectedOutput;
 
   const qualityRef = useRef<Quality>(quality);
   qualityRef.current = quality;
+
+  const frameCountRef = useRef(0);
+  const fpsIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const micLevelRef = useRef(0);
+  const lastMicUpdateRef = useRef(0);
+
+  const toggleSidebar = () => {
+    setSidebarCollapsed((prev) => {
+      const next = !prev;
+      localStorage.setItem("partagi-sidebar-collapsed", next ? "1" : "0");
+      return next;
+    });
+  };
+
+  const toggleStats = () => {
+    setShowStats((prev) => {
+      const next = !prev;
+      localStorage.setItem("partagi-show-stats", next ? "1" : "0");
+      return next;
+    });
+  };
 
   const connectWs = useCallback(() => {
     const ws = new WebSocket(streamUrl);
@@ -100,6 +134,7 @@ export default function Session({
           const payload = view.slice(1);
 
           if (type === 0x01) {
+            frameCountRef.current++;
             const blob = new Blob([payload], { type: "image/jpeg" });
             const url = URL.createObjectURL(blob);
             const img = new Image();
@@ -117,6 +152,23 @@ export default function Session({
             };
             img.src = url;
           } else if (type === 0x02) {
+            if (isMicOnRef.current && payload.byteLength >= 2) {
+              const int16 = new Int16Array(payload.buffer, payload.byteOffset, payload.byteLength / 2);
+              let sum = 0;
+              for (let i = 0; i < int16.length; i++) {
+                const v = int16[i] / 32768;
+                sum += v * v;
+              }
+              const rms = Math.sqrt(sum / int16.length);
+              const now = performance.now();
+              if (now - lastMicUpdateRef.current > 80) {
+                lastMicUpdateRef.current = now;
+                micLevelRef.current = rms;
+                setMicLevel(rms);
+              } else if (rms > micLevelRef.current) {
+                micLevelRef.current = rms;
+              }
+            }
             const audioCtx = audioCtxRef.current;
             if (audioCtx && audioCtx.state === "running") {
               const int16 = new Int16Array(payload.buffer, payload.byteOffset, payload.byteLength / 2);
@@ -153,13 +205,33 @@ export default function Session({
       setAudioUnlocked(true);
     }
     connectWs();
+
+    fpsIntervalRef.current = setInterval(() => {
+      const frames = frameCountRef.current;
+      frameCountRef.current = 0;
+      setFps(frames);
+      const canvas = canvasRef.current;
+      if (canvas && canvas.width > 0) {
+        setResolution(`${canvas.width}×${canvas.height}`);
+      }
+    }, 1000);
+
     return () => {
       if (retryRef.current) clearTimeout(retryRef.current);
       if (pollRef.current) clearInterval(pollRef.current);
+      if (fpsIntervalRef.current) clearInterval(fpsIntervalRef.current);
       wsRef.current?.close();
       audioCtxRef.current?.close();
     };
   }, [connectWs]);
+
+  useEffect(() => {
+    isMicOnRef.current = isMicOn;
+    if (!isMicOn) {
+      micLevelRef.current = 0;
+      setMicLevel(0);
+    }
+  }, [isMicOn]);
 
   useEffect(() => {
     pollRef.current = setInterval(async () => {
@@ -403,6 +475,10 @@ export default function Session({
     setTimeout(() => setViewerCopied(false), 2000);
   };
 
+  const micLevelPct = Math.min(100, Math.round(micLevel * 300));
+  const micLevelClass =
+    micLevelPct >= 85 ? "peak" : micLevelPct >= 60 ? "hot" : "";
+
   const sharerName =
     activeSharer != null
       ? participants.find((p) => p.id === activeSharer)?.name ||
@@ -458,6 +534,16 @@ export default function Session({
               <option value="High">High</option>
             </select>
           </div>
+          {isMicOn && (
+            <div className="mic-meter" title="Microphone level">
+              <div className="mic-meter-track">
+                <div
+                  className={`mic-meter-fill ${micLevelClass}`}
+                  style={{ width: `${micLevelPct}%` }}
+                />
+              </div>
+            </div>
+          )}
           <Button
             variant={isMicOn ? "primary" : "default"}
             size="md"
@@ -466,6 +552,15 @@ export default function Session({
           >
             {isMicOn ? <Mic size={14} /> : <MicOff size={14} />}
             {isMicOn ? "Mic On" : "Mic Off"}
+          </Button>
+          <Button
+            variant={showStats ? "primary" : "default"}
+            size="md"
+            onClick={toggleStats}
+            title="Toggle stats overlay"
+          >
+            <Activity size={14} />
+            Stats
           </Button>
           <Button
             variant={isSharing ? "danger" : waitingApproval ? "default" : "primary"}
@@ -493,6 +588,27 @@ export default function Session({
       <div className="session-body">
         <div className="stage">
           <canvas ref={canvasRef} />
+
+          {showStats && (
+            <div className="stats-overlay">
+              <div className="stat-row">
+                <span>FPS</span>
+                <span className="stat-value">{fps}</span>
+              </div>
+              <div className="stat-row">
+                <span>Resolution</span>
+                <span className="stat-value">{resolution}</span>
+              </div>
+              <div className="stat-row">
+                <span>Viewers</span>
+                <span className="stat-value">{viewerCount}</span>
+              </div>
+              <div className="stat-row">
+                <span>Quality</span>
+                <span className="stat-value">{quality}</span>
+              </div>
+            </div>
+          )}
 
           {!connected && (
             <div className="stage-overlay">
@@ -619,17 +735,31 @@ export default function Session({
           )}
         </div>
 
-        <aside className="aside">
+        <aside className={`aside ${sidebarCollapsed ? "aside-collapsed" : ""}`}>
           <div className="aside-header">
-            <h3 className="aside-title">Participants</h3>
-            <span className="badge">{participants.length}</span>
+            {!sidebarCollapsed && <h3 className="aside-title">Participants</h3>}
+            {!sidebarCollapsed && <span className="badge">{participants.length}</span>}
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={toggleSidebar}
+              title={sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+            >
+              {sidebarCollapsed ? <PanelLeftOpen size={14} /> : <PanelLeftClose size={14} />}
+            </Button>
           </div>
 
           <ul className="participant-list">
+            {participants.length === 0 && !sidebarCollapsed && (
+              <li className="caption muted" style={{ padding: "0.75rem" }}>
+                No participants yet
+              </li>
+            )}
             {participants.map((p) => (
               <li
                 key={p.id}
                 className={`participant ${p.id === participantId ? "participant-self" : ""}`}
+                title={sidebarCollapsed ? p.name : undefined}
               >
                 <Avatar name={p.name} active={p.id === participantId} />
                 <span className="participant-name">
@@ -638,18 +768,22 @@ export default function Session({
                     <span className="participant-self-label"> (you)</span>
                   )}
                 </span>
-                {activeSharer === p.id && <Badge variant="success">sharing</Badge>}
+                {!sidebarCollapsed && activeSharer === p.id && (
+                  <Badge variant="success">sharing</Badge>
+                )}
               </li>
             ))}
           </ul>
 
-          <div className="status-bar">
-            <span>{connected ? "Connected to server" : "Connecting..."}</span>
-            <span className="row row-gap-sm">
-              <span className={`status-dot ${activeSharer ? "status-dot-live" : ""}`} />
-              {activeSharer ? "Sharing active" : "Idle"}
-            </span>
-          </div>
+          {!sidebarCollapsed && (
+            <div className="status-bar">
+              <span>{connected ? "Connected to server" : "Connecting..."}</span>
+              <span className="row row-gap-sm">
+                <span className={`status-dot ${activeSharer ? "status-dot-live" : ""}`} />
+                {activeSharer ? "Sharing active" : "Idle"}
+              </span>
+            </div>
+          )}
         </aside>
       </div>
     </div>
