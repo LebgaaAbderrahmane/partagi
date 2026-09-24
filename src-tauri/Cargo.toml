@@ -1,6 +1,6 @@
 [package]
 name = "partagi"
-version = "0.1.0"
+version = "0.2.0"
 description = "Lightweight P2P screen sharing for small teams"
 authors = ["Abdou"]
 edition = "2021"

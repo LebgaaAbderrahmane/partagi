@@ -160,18 +160,18 @@ Detailed docs live under [docs/](docs/): architecture, features, remote setup, s
 - Security hardening (per-room media, WS room auth, longer codes, TTL)
 - Remote/port-forward mode (LAN/Remote toggle, public host URLs)
 - Full documentation set (docs/)
-
-### Next
-
 - Automated test suites (Vitest + cargo test) and CI wiring
 - Reconnect UX + error-surface polish
 - Accessibility pass (focus trap, contrast, labels)
-- AppImage packaging (requires linuxdeploy)
 - v0.2.0 release
+
+### Next
+
+- AppImage packaging (requires linuxdeploy)
+- Optional built-in tunnel helpers (user-brings-account)
 
 ### Future (post-v0.2)
 
-- Optional built-in tunnel helpers (user-brings-account)
 - AI meeting summary (STT + LLM)
 - Real-time translation
 - Session recap search

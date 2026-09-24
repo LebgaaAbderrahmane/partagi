@@ -1,6 +1,6 @@
 # Maintainer: Abdou <abdou@example.com>
 pkgname=partagi
-pkgver=0.1.0
+pkgver=0.2.0
 pkgrel=1
 pkgdesc="Lightweight LAN screen sharing for small teams"
 arch=('x86_64')
