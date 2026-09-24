@@ -38,7 +38,7 @@ Config lives in `vitest.config.ts` (jsdom, setup `src/test/setup.ts`).
 | `src/lib/recent-sessions.test.ts` | load/save recent codes: empty, corrupt JSON, filter, dedupe/uppercase, cap |
 | `src/lib/urls.test.ts` | `streamHostFromUrl`, `viewerUrlFromStream`, `wsUrlWithRoom` |
 | `src/lib/backoff.test.ts` | `nextBackoffDelay` growth, cap, custom factor |
-| `src/components/ui/Modal.test.tsx` | open/closed, aria, Escape, backdrop vs body, close button |
+| `src/components/ui/Modal.test.tsx` | open/closed, aria-labelledby, Escape, backdrop vs body, close button, Tab focus trap |
 | `src/components/ui/Toast.test.tsx` | provider requirement, auto-dismiss 5s, manual dismiss, multi |
 | `src/components/ui/primitives.test.tsx` | Avatar initials/active, Badge variant, Button classes/disabled |
 
@@ -52,7 +52,7 @@ Test files are excluded from `tsconfig.json` so `pnpm build` typechecks app code
 |------|----------|-------|
 | Room code normalize (Rust) | Done | `normalize_code`, `generate_code` |
 | URL builders | Done | must include `?room=` |
-| `Modal` / `Toast` / primitives | Done | focus trap still TODO in P3 |
+| `Modal` / `Toast` / primitives | Done | Modal focus trap + aria-labelledby covered |
 | Share approval state machine | High | extract pure fn from `main.rs` commands |
 | Session leave/GC predicates | Medium | empty-room + TTL |
 | `Session` reconnect backoff | High | extract from component in P2 |

@@ -124,6 +124,12 @@
       background: rgba(255,255,255,0.2);
     }
 
+    .fullscreen-btn:focus-visible,
+    .audio-unlock:focus-visible {
+      outline: 2px solid #818cf8;
+      outline-offset: 2px;
+    }
+
     .reconnect-info {
       font-size: 0.75rem;
       color: #555;
@@ -151,17 +157,17 @@
   </style>
 </head>
 <body>
-  <canvas id="canvas"></canvas>
+  <canvas id="canvas" role="img" aria-label="Shared screen"></canvas>
 
-  <div class="overlay" id="overlay">
+  <div class="overlay" id="overlay" role="status" aria-live="polite">
     <div class="overlay-icon" id="overlay-icon">~</div>
     <div class="overlay-text" id="overlay-text">Connecting...</div>
     <div class="overlay-sub" id="overlay-sub"></div>
   </div>
 
-  <button class="audio-unlock" id="audio-unlock" onclick="unlockAudio()">🔊 Tap to enable audio</button>
+  <button class="audio-unlock" id="audio-unlock" onclick="unlockAudio()" aria-label="Enable audio">🔊 Tap to enable audio</button>
 
-  <button class="fullscreen-btn" id="fullscreen-btn" onclick="toggleFullscreen()">Fullscreen</button>
+  <button class="fullscreen-btn" id="fullscreen-btn" onclick="toggleFullscreen()" aria-label="Toggle fullscreen">Fullscreen</button>
 
   <div class="status-bar">
     <div class="status-left">

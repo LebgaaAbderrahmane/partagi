@@ -11,11 +11,12 @@
   --border: #262626;
   --border-hover: #404040;
   --text: #e5e5e5;
-  --text-muted: #737373;
+  --text-muted: #a3a3a3;
   --accent: #6366f1;
   --accent-hover: #818cf8;
   --danger: #ef4444;
   --danger-hover: #dc2626;
+  --danger-text: #b91c1c;
   --success: #22c55e;
   --warning: #f59e0b;
   --radius: 8px;
@@ -86,12 +87,16 @@ body {
 .btn-danger {
   background: var(--danger);
   border-color: var(--danger);
-  color: white;
+  color: #fff;
 }
 
 .btn-danger:hover:not(:disabled) {
   background: var(--danger-hover);
   border-color: var(--danger-hover);
+}
+
+.btn-danger:focus-visible {
+  outline-color: #fca5a5;
 }
 
 .btn-ghost {
@@ -144,6 +149,12 @@ input {
 
 input:focus {
   border-color: var(--accent);
+}
+
+input:focus-visible,
+select:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 
 input::placeholder {
@@ -810,7 +821,7 @@ code {
 }
 
 .error-text {
-  color: var(--danger);
+  color: #f87171;
   font-size: 0.85rem;
 }
 

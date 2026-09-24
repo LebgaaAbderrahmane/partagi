@@ -30,8 +30,45 @@ describe("Modal", () => {
     );
     const dialog = screen.getByRole("dialog");
     expect(dialog).toHaveAttribute("aria-modal", "true");
-    expect(dialog).toHaveAttribute("aria-label", "Leave session?");
+    const labelledBy = dialog.getAttribute("aria-labelledby");
+    expect(labelledBy).toBeTruthy();
+    expect(document.getElementById(labelledBy!)).toHaveTextContent(
+      "Leave session?",
+    );
     expect(screen.getByText("body")).toBeInTheDocument();
+  });
+
+  it("traps Tab focus inside the dialog", () => {
+    render(
+      <Modal open onClose={onClose} title="T">
+        <button type="button">One</button>
+        <button type="button">Two</button>
+      </Modal>,
+    );
+    const dialog = screen.getByRole("dialog");
+    const one = screen.getByRole("button", { name: "One" });
+    const two = screen.getByRole("button", { name: "Two" });
+    const close = screen.getByLabelText("Close");
+
+    dialog.focus();
+    fireEvent.keyDown(document, { key: "Tab" });
+    expect(document.activeElement).toBe(close);
+
+    close.focus();
+    fireEvent.keyDown(document, { key: "Tab" });
+    expect(document.activeElement).toBe(one);
+
+    one.focus();
+    fireEvent.keyDown(document, { key: "Tab" });
+    expect(document.activeElement).toBe(two);
+
+    two.focus();
+    fireEvent.keyDown(document, { key: "Tab" });
+    expect(document.activeElement).toBe(close);
+
+    close.focus();
+    fireEvent.keyDown(document, { key: "Tab", shiftKey: true });
+    expect(document.activeElement).toBe(two);
   });
 
   it("closes on Escape", () => {
