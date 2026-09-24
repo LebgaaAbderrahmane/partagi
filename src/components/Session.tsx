@@ -67,6 +67,7 @@ export default function Session({
   const [audioUnlocked, setAudioUnlocked] = useState(false);
   const [viewerCount, setViewerCount] = useState(0);
   const [showQr, setShowQr] = useState(false);
+  const [showLeaveConfirm, setShowLeaveConfirm] = useState(false);
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const wsRef = useRef<WebSocket | null>(null);
@@ -327,6 +328,69 @@ export default function Session({
     onLeave();
   };
 
+  const handleRequestLeave = () => {
+    setShowLeaveConfirm(true);
+  };
+
+  const handleConfirmLeave = async () => {
+    setShowLeaveConfirm(false);
+    await handleLeave();
+  };
+
+  const actionsRef = useRef({
+    handleShare: async () => {},
+    handleToggleMic: async () => {},
+    handleRequestLeave: () => {},
+  });
+  actionsRef.current = {
+    handleShare,
+    handleToggleMic,
+    handleRequestLeave,
+  };
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement | null;
+      const tag = target?.tagName;
+      if (
+        tag === "INPUT" ||
+        tag === "TEXTAREA" ||
+        tag === "SELECT" ||
+        target?.isContentEditable
+      ) {
+        return;
+      }
+
+      if (e.key === "Escape") {
+        if (showLeaveConfirm) setShowLeaveConfirm(false);
+        return;
+      }
+
+      if (showLeaveConfirm || showQr || showMonitorPicker) return;
+
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+
+      if (e.shiftKey && e.code === "KeyQ") {
+        e.preventDefault();
+        actionsRef.current.handleRequestLeave();
+        return;
+      }
+
+      if (e.shiftKey) return;
+
+      if (e.code === "KeyS") {
+        e.preventDefault();
+        void actionsRef.current.handleShare();
+      } else if (e.code === "KeyM") {
+        e.preventDefault();
+        void actionsRef.current.handleToggleMic();
+      }
+    };
+
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [showLeaveConfirm, showQr, showMonitorPicker]);
+
   const copyCode = async () => {
     await navigator.clipboard.writeText(roomCode);
     setCopied(true);
@@ -398,6 +462,7 @@ export default function Session({
             variant={isMicOn ? "primary" : "default"}
             size="md"
             onClick={handleToggleMic}
+            title="Toggle microphone (M)"
           >
             {isMicOn ? <Mic size={14} /> : <MicOff size={14} />}
             {isMicOn ? "Mic On" : "Mic Off"}
@@ -405,6 +470,7 @@ export default function Session({
           <Button
             variant={isSharing ? "danger" : waitingApproval ? "default" : "primary"}
             onClick={handleShare}
+            title="Share screen (S)"
           >
             {isSharing ? <ScreenShareOff size={14} /> : <ScreenShare size={14} />}
             {isSharing
@@ -413,7 +479,11 @@ export default function Session({
                 ? "Cancel Request"
                 : "Share Screen"}
           </Button>
-          <Button variant="danger" onClick={handleLeave}>
+          <Button
+            variant="danger"
+            onClick={handleRequestLeave}
+            title="Leave session (Shift+Q)"
+          >
             <LogOut size={14} />
             Leave
           </Button>
@@ -488,6 +558,25 @@ export default function Session({
                 <QRCodeSVG value={viewerUrl} size={200} />
               </div>
               <code className="caption muted">{viewerUrl}</code>
+            </div>
+          </Modal>
+
+          <Modal
+            open={showLeaveConfirm}
+            onClose={() => setShowLeaveConfirm(false)}
+            title="Leave session?"
+          >
+            <p className="muted small" style={{ textAlign: "center" }}>
+              You'll stop sharing and disconnect from{" "}
+              <code>{roomCode}</code>. This can't be undone.
+            </p>
+            <div className="row row-gap" style={{ width: "100%" }}>
+              <Button className="btn-flex" onClick={() => setShowLeaveConfirm(false)}>
+                Stay
+              </Button>
+              <Button className="btn-flex" variant="danger" onClick={handleConfirmLeave}>
+                Leave
+              </Button>
             </div>
           </Modal>
 
