@@ -2,39 +2,49 @@ import { useState, useEffect } from "react";
 import { createSession } from "../lib/tauri-commands";
 
 interface HomeProps {
-  onJoinSession: (code: string, participantId: string) => void;
+  onJoinSession: (
+    code: string,
+    participantId: string,
+    displayName: string,
+  ) => void;
 }
 
 const STORAGE_KEY = "partagi-participant-id";
+const NAME_KEY = "partagi-display-name";
 
 export default function Home({ onJoinSession }: HomeProps) {
-  const [participantId, setParticipantId] = useState(() =>
-    localStorage.getItem(STORAGE_KEY) || ""
+  const [displayName, setDisplayName] = useState(
+    () => localStorage.getItem(NAME_KEY) || "",
   );
-  const [rememberMe, setRememberMe] = useState(() =>
-    localStorage.getItem(STORAGE_KEY) !== null
+  const [participantId] = useState(
+    () => localStorage.getItem(STORAGE_KEY) || crypto.randomUUID().slice(0, 12),
+  );
+  const [rememberMe, setRememberMe] = useState(
+    () => localStorage.getItem(STORAGE_KEY) !== null,
   );
   const [joinCode, setJoinCode] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (rememberMe && participantId) {
+    if (rememberMe) {
       localStorage.setItem(STORAGE_KEY, participantId);
+      localStorage.setItem(NAME_KEY, displayName);
     } else {
       localStorage.removeItem(STORAGE_KEY);
+      localStorage.removeItem(NAME_KEY);
     }
-  }, [rememberMe, participantId]);
+  }, [rememberMe, participantId, displayName]);
 
-  const getId = () => participantId.trim() || crypto.randomUUID().slice(0, 12);
+  const getName = () => displayName.trim() || "Guest";
 
   const handleCreate = async () => {
     setLoading(true);
     setError(null);
     try {
-      const id = getId();
-      const res = await createSession(id);
-      onJoinSession(res.code, id);
+      const name = getName();
+      const res = await createSession(participantId, name);
+      onJoinSession(res.code, participantId, name);
     } catch (e) {
       setError(String(e));
     } finally {
@@ -48,7 +58,7 @@ export default function Home({ onJoinSession }: HomeProps) {
     setLoading(true);
     setError(null);
     try {
-      onJoinSession(code, getId());
+      onJoinSession(code, participantId, getName());
     } catch (e) {
       setError(String(e));
     } finally {
@@ -71,8 +81,8 @@ export default function Home({ onJoinSession }: HomeProps) {
           <input
             type="text"
             placeholder="Enter your name (optional)"
-            value={participantId}
-            onChange={(e) => setParticipantId(e.target.value)}
+            value={displayName}
+            onChange={(e) => setDisplayName(e.target.value)}
           />
           <label style={{ display: "flex", alignItems: "center", gap: "0.5rem", fontSize: "0.8rem", color: "var(--text-muted)", cursor: "pointer" }}>
             <input
