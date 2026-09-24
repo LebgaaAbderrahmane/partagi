@@ -146,3 +146,8 @@ export async function listOutputs(): Promise<string[]> {
   assertTauri();
   return invoke("list_outputs");
 }
+
+export async function getViewerCount(): Promise<number> {
+  assertTauri();
+  return invoke("get_viewer_count");
+}

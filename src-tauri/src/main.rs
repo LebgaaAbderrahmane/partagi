@@ -4,6 +4,8 @@ use serde::{Deserialize, Serialize};
 use futures_util::{SinkExt, StreamExt};
 use std::collections::HashMap;
 use std::net::UdpSocket;
+use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::Arc;
 use tauri::State;
 use tokio::net::TcpListener;
 use tokio::sync::Mutex;
@@ -19,6 +21,7 @@ struct AppState {
     broadcaster: stream::FrameBroadcaster,
     capture: Mutex<stream::ScreenCapture>,
     mic: Mutex<stream::MicCapture>,
+    viewer_count: Arc<AtomicUsize>,
 }
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -306,7 +309,15 @@ fn list_outputs() -> Vec<String> {
     stream::list_outputs_sync()
 }
 
-async fn run_stream_server(broadcaster: stream::FrameBroadcaster) {
+#[tauri::command]
+fn get_viewer_count(state: State<AppState>) -> usize {
+    state.viewer_count.load(Ordering::Relaxed)
+}
+
+async fn run_stream_server(
+    broadcaster: stream::FrameBroadcaster,
+    viewer_count: Arc<AtomicUsize>,
+) {
     let listener = TcpListener::bind(("0.0.0.0", STREAM_PORT))
         .await
         .expect("Failed to bind stream server");
@@ -316,6 +327,8 @@ async fn run_stream_server(broadcaster: stream::FrameBroadcaster) {
     loop {
         if let Ok((stream, addr)) = listener.accept().await {
             println!("[stream] New viewer connected from {}", addr);
+            viewer_count.fetch_add(1, Ordering::Relaxed);
+            let count = viewer_count.clone();
             let mut rx = broadcaster.subscribe();
             tokio::spawn(async move {
                 let ws = accept_async(stream)
@@ -353,6 +366,7 @@ async fn run_stream_server(broadcaster: stream::FrameBroadcaster) {
                         }
                     }
                 }
+                count.fetch_sub(1, Ordering::Relaxed);
                 println!("[stream] Viewer {} disconnected", addr);
             });
         }
@@ -382,6 +396,8 @@ async fn run_viewer_server() {
 fn main() {
     let broadcaster = stream::create_broadcaster();
     let broadcaster_for_server = broadcaster.clone();
+    let viewer_count = Arc::new(AtomicUsize::new(0));
+    let viewer_count_for_server = viewer_count.clone();
 
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
@@ -390,9 +406,13 @@ fn main() {
             broadcaster,
             capture: Mutex::new(stream::ScreenCapture::new()),
             mic: Mutex::new(stream::MicCapture::new()),
+            viewer_count,
         })
-        .setup(|_app| {
-            tauri::async_runtime::spawn(run_stream_server(broadcaster_for_server));
+        .setup(move |_app| {
+            tauri::async_runtime::spawn(run_stream_server(
+                broadcaster_for_server,
+                viewer_count_for_server,
+            ));
             tauri::async_runtime::spawn(run_viewer_server());
             Ok(())
         })
@@ -415,6 +435,7 @@ fn main() {
             stop_mic,
             get_stream_url,
             list_outputs,
+            get_viewer_count,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
