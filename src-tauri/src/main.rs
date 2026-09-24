@@ -57,6 +57,15 @@ struct AppState {
     mic: Mutex<stream::MicCapture>,
     viewer_count: Arc<AtomicUsize>,
     network: Mutex<NetworkConfig>,
+    server_status: Arc<Mutex<ServerStatus>>,
+}
+
+#[derive(Clone, Debug, Default, Serialize)]
+struct ServerStatus {
+    stream_ok: bool,
+    viewer_ok: bool,
+    stream_error: Option<String>,
+    viewer_error: Option<String>,
 }
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -496,6 +505,11 @@ fn get_viewer_count(state: State<AppState>) -> usize {
     state.viewer_count.load(Ordering::Relaxed)
 }
 
+#[tauri::command]
+fn get_server_status(state: State<AppState>) -> ServerStatus {
+    state.server_status.blocking_lock().clone()
+}
+
 fn extract_room_from_query(query: Option<&str>) -> Option<String> {
     let query = query?;
     for pair in query.split('&') {
@@ -512,15 +526,26 @@ async fn run_stream_server(
     sessions: Arc<Mutex<HashMap<String, Session>>>,
     broadcasters: Arc<Mutex<HashMap<String, stream::FrameBroadcaster>>>,
     viewer_count: Arc<AtomicUsize>,
+    server_status: Arc<Mutex<ServerStatus>>,
 ) {
     let listener = match TcpListener::bind(("0.0.0.0", STREAM_PORT)).await {
         Ok(l) => l,
         Err(e) => {
             eprintln!("[stream] Failed to bind stream server: {e}");
+            let mut status = server_status.lock().await;
+            status.stream_ok = false;
+            status.stream_error = Some(format!(
+                "Stream server failed to bind port {STREAM_PORT}: {e}. Is another Partagi instance running?"
+            ));
             return;
         }
     };
 
+    {
+        let mut status = server_status.lock().await;
+        status.stream_ok = true;
+        status.stream_error = None;
+    }
     println!("[stream] WebSocket server listening on ws://0.0.0.0:{}", STREAM_PORT);
 
     loop {
@@ -617,7 +642,7 @@ async fn run_stream_server(
     }
 }
 
-async fn run_viewer_server() {
+async fn run_viewer_server(server_status: Arc<Mutex<ServerStatus>>) {
     use axum::{routing::get, Router};
 
     let app = Router::new()
@@ -630,14 +655,27 @@ async fn run_viewer_server() {
         Ok(l) => l,
         Err(e) => {
             eprintln!("[viewer] Failed to bind viewer server: {e}");
+            let mut status = server_status.lock().await;
+            status.viewer_ok = false;
+            status.viewer_error = Some(format!(
+                "Viewer server failed to bind port {VIEWER_PORT}: {e}. Is another Partagi instance running?"
+            ));
             return;
         }
     };
 
+    {
+        let mut status = server_status.lock().await;
+        status.viewer_ok = true;
+        status.viewer_error = None;
+    }
     println!("[viewer] HTTP viewer server listening on http://0.0.0.0:{}", VIEWER_PORT);
 
     if let Err(e) = axum::serve(listener, app).await {
         eprintln!("[viewer] Viewer server error: {e}");
+        let mut status = server_status.lock().await;
+        status.viewer_ok = false;
+        status.viewer_error = Some(format!("Viewer server error: {e}"));
     }
 }
 
@@ -673,10 +711,13 @@ fn main() {
     let sessions = Arc::new(Mutex::new(HashMap::new()));
     let broadcasters = Arc::new(Mutex::new(HashMap::new()));
     let viewer_count = Arc::new(AtomicUsize::new(0));
+    let server_status = Arc::new(Mutex::new(ServerStatus::default()));
 
     let sessions_for_server = sessions.clone();
     let broadcasters_for_server = broadcasters.clone();
     let viewer_count_for_server = viewer_count.clone();
+    let server_status_for_stream = server_status.clone();
+    let server_status_for_viewer = server_status.clone();
     let sessions_for_gc = sessions.clone();
     let broadcasters_for_gc = broadcasters.clone();
 
@@ -689,14 +730,16 @@ fn main() {
             mic: Mutex::new(stream::MicCapture::new()),
             viewer_count,
             network: Mutex::new(NetworkConfig::default()),
+            server_status,
         })
         .setup(move |_app| {
             tauri::async_runtime::spawn(run_stream_server(
                 sessions_for_server,
                 broadcasters_for_server,
                 viewer_count_for_server,
+                server_status_for_stream,
             ));
-            tauri::async_runtime::spawn(run_viewer_server());
+            tauri::async_runtime::spawn(run_viewer_server(server_status_for_viewer));
             tauri::async_runtime::spawn(run_session_gc(
                 sessions_for_gc,
                 broadcasters_for_gc,
@@ -724,6 +767,7 @@ fn main() {
             set_network_mode,
             list_outputs,
             get_viewer_count,
+            get_server_status,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

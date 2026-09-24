@@ -15,7 +15,7 @@ ss -tlnp | grep -E '9001|9002'
 lsof -i :9001 -i :9002
 ```
 
-Free the port or stop the conflicting app. Servers log and exit the task rather than panicking the whole process — the UI may still open but streaming will fail until ports are free.
+Free the port or stop the conflicting app. On startup the app records bind status and surfaces it as a red banner on the home screen (and a toast in-session) via `get_server_status`. Servers log and exit the task rather than panicking the whole process — streaming will fail until ports are free.
 
 ## Cannot create / join session
 

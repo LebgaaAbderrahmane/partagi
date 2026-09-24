@@ -37,6 +37,7 @@ Config lives in `vitest.config.ts` (jsdom, setup `src/test/setup.ts`).
 |------|--------|
 | `src/lib/recent-sessions.test.ts` | load/save recent codes: empty, corrupt JSON, filter, dedupe/uppercase, cap |
 | `src/lib/urls.test.ts` | `streamHostFromUrl`, `viewerUrlFromStream`, `wsUrlWithRoom` |
+| `src/lib/backoff.test.ts` | `nextBackoffDelay` growth, cap, custom factor |
 | `src/components/ui/Modal.test.tsx` | open/closed, aria, Escape, backdrop vs body, close button |
 | `src/components/ui/Toast.test.tsx` | provider requirement, auto-dismiss 5s, manual dismiss, multi |
 | `src/components/ui/primitives.test.tsx` | Avatar initials/active, Badge variant, Button classes/disabled |

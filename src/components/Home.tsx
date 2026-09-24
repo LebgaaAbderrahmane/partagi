@@ -3,12 +3,14 @@ import {
   createSession,
   getNetworkInfo,
   setNetworkMode,
+  getServerStatus,
   type NetworkInfo,
   type NetworkMode,
+  type ServerStatus,
 } from "../lib/tauri-commands";
 import { loadRecent, saveRecent } from "../lib/recent-sessions";
 import { Button } from "./ui";
-import { History, Globe, Wifi, ExternalLink } from "lucide-react";
+import { History, Globe, Wifi, ExternalLink, AlertTriangle } from "lucide-react";
 
 interface HomeProps {
   onJoinSession: (
@@ -39,6 +41,7 @@ export default function Home({ onJoinSession }: HomeProps) {
   const [publicHost, setPublicHost] = useState("");
   const [showNetwork, setShowNetwork] = useState(false);
   const [detectingIp, setDetectingIp] = useState(false);
+  const [serverStatus, setServerStatus] = useState<ServerStatus | null>(null);
 
   useEffect(() => {
     getNetworkInfo()
@@ -47,6 +50,10 @@ export default function Home({ onJoinSession }: HomeProps) {
         setPublicHost(info.public_host || "");
         if (info.mode === "remote") setShowNetwork(true);
       })
+      .catch(() => {});
+
+    getServerStatus()
+      .then(setServerStatus)
       .catch(() => {});
   }, []);
 
@@ -142,6 +149,16 @@ export default function Home({ onJoinSession }: HomeProps) {
 
   const mode = network?.mode ?? "lan";
   const remoteReady = network?.remote_ready ?? false;
+  const serverIssues = !serverStatus
+    ? []
+    : [
+        ...(serverStatus.stream_ok || !serverStatus.stream_error
+          ? []
+          : [serverStatus.stream_error]),
+        ...(serverStatus.viewer_ok || !serverStatus.viewer_error
+          ? []
+          : [serverStatus.viewer_error]),
+      ];
 
   return (
     <div className="home">
@@ -149,6 +166,21 @@ export default function Home({ onJoinSession }: HomeProps) {
         <h1>Partagi</h1>
         <p>Lightweight screen sharing for small teams</p>
       </div>
+
+      {serverIssues.length > 0 && (
+        <div className="server-banner" role="alert">
+          <AlertTriangle size={14} />
+          <div>
+            {serverIssues.map((msg) => (
+              <p key={msg}>{msg}</p>
+            ))}
+            <p className="caption muted">
+              Ports 9001 (stream) and 9002 (viewer) must be free. See
+              troubleshooting docs.
+            </p>
+          </div>
+        </div>
+      )}
 
       <div className="home-card">
         <div className="field">

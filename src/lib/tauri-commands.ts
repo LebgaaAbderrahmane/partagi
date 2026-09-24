@@ -178,3 +178,15 @@ export async function getViewerCount(): Promise<number> {
   assertTauri();
   return invoke("get_viewer_count");
 }
+
+export interface ServerStatus {
+  stream_ok: boolean;
+  viewer_ok: boolean;
+  stream_error: string | null;
+  viewer_error: string | null;
+}
+
+export async function getServerStatus(): Promise<ServerStatus> {
+  assertTauri();
+  return invoke("get_server_status");
+}
