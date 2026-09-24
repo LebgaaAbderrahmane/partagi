@@ -17,6 +17,7 @@ import {
   cancelShareRequest,
   stopSharing,
   type Participant,
+  type Quality,
 } from "../lib/tauri-commands";
 
 interface SessionProps {
@@ -45,6 +46,7 @@ export default function Session({
   const [outputs, setOutputs] = useState<string[]>([]);
   const [selectedOutput, setSelectedOutput] = useState<string>("");
   const [showMonitorPicker, setShowMonitorPicker] = useState(false);
+  const [quality, setQuality] = useState<Quality>("Balanced");
 
   const [participants, setParticipants] = useState<Participant[]>([]);
   const [activeSharer, setActiveSharer] = useState<string | null>(null);
@@ -60,6 +62,12 @@ export default function Session({
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const audioCtxRef = useRef<AudioContext | null>(null);
   const isSharingRef = useRef(false);
+
+  const selectedOutputRef = useRef("");
+  selectedOutputRef.current = selectedOutput;
+
+  const qualityRef = useRef<Quality>(quality);
+  qualityRef.current = quality;
 
   const connectWs = useCallback(() => {
     const ws = new WebSocket(streamUrl);
@@ -229,7 +237,7 @@ export default function Session({
       if (!activeSharer || activeSharer === participantId) {
         await requestScreenShare(roomCode, participantId);
       }
-      await startStream(selectedOutput || undefined);
+      await startStream(selectedOutput || undefined, quality);
       setIsSharing(true);
       isSharingRef.current = true;
       setActiveSharer(participantId);
@@ -237,6 +245,18 @@ export default function Session({
       setShowMonitorPicker(false);
     } catch (e) {
       setError(String(e));
+    }
+  };
+
+  const handleQualityChange = async (q: Quality) => {
+    setQuality(q);
+    if (isSharingRef.current) {
+      try {
+        await stopStream();
+        await startStream(selectedOutputRef.current || undefined, q);
+      } catch (e) {
+        setError(String(e));
+      }
     }
   };
 
@@ -352,7 +372,27 @@ export default function Session({
             {viewerCount} watching
           </div>
         </div>
-        <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: "0.35rem" }}>
+            <label style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>Quality</label>
+            <select
+              value={quality}
+              onChange={(e) => handleQualityChange(e.target.value as Quality)}
+              style={{
+                background: "var(--surface)",
+                border: "1px solid var(--border)",
+                borderRadius: "var(--radius)",
+                color: "var(--text)",
+                padding: "0.3rem 0.5rem",
+                fontSize: "0.8rem",
+                outline: "none",
+              }}
+            >
+              <option value="Low">Low</option>
+              <option value="Balanced">Balanced</option>
+              <option value="High">High</option>
+            </select>
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
           <button
             className={isMicOn ? "primary" : ""}
             onClick={handleToggleMic}
@@ -371,7 +411,7 @@ export default function Session({
                 : "Share Screen"}
           </button>
           <button className="danger" onClick={handleLeave}>Leave</button>
-        </div>
+          </div>
       </header>
 
       <div style={{ flex: 1, display: "flex", overflow: "hidden" }}>

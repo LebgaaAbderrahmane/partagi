@@ -117,9 +117,14 @@ export async function takeoverShare(
   return invoke("takeover_share", { code, participantId });
 }
 
-export async function startStream(output?: string): Promise<void> {
+export type Quality = "Low" | "Balanced" | "High";
+
+export async function startStream(
+  output?: string,
+  quality?: Quality,
+): Promise<void> {
   assertTauri();
-  return invoke("start_stream", { output: output ?? null });
+  return invoke("start_stream", { output: output ?? null, quality: quality ?? null });
 }
 
 export async function stopStream(): Promise<void> {

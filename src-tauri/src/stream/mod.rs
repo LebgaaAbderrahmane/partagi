@@ -15,4 +15,4 @@ mod windows;
 #[cfg(target_os = "windows")]
 pub use windows::{ScreenCapture, MicCapture, list_outputs_sync};
 
-pub use common::{StreamFrame, FrameBroadcaster, create_broadcaster};
+pub use common::{StreamFrame, FrameBroadcaster, Quality, create_broadcaster};
